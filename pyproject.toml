@@ -1,0 +1,81 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mald"
+version = "0.1.0"
+description = "MALD - Markdown Archive Linux Distribution"
+authors = [
+    {name = "MALD Project", email = "mald@example.com"}
+]
+readme = "README.md"
+license = {file = "LICENSE"}
+requires-python = ">=3.8"
+keywords = ["markdown", "linux", "pkm", "ai", "rag"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: System :: Operating System",
+    "Topic :: Text Processing :: Markup :: Markdown",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+    "pyyaml>=6.0",
+    "click>=8.0.0",
+]
+
+[project.optional-dependencies]
+ai = [
+    "ollama",
+    "llama-cpp-python",
+    "chromadb",
+    "sentence-transformers",
+]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov",
+    "black",
+    "flake8",
+    "mypy",
+]
+
+[project.urls]
+Homepage = "https://github.com/NAME0x0/MALD"
+Documentation = "https://github.com/NAME0x0/MALD/docs"
+Repository = "https://github.com/NAME0x0/MALD"
+Issues = "https://github.com/NAME0x0/MALD/issues"
+
+[project.scripts]
+mald = "mald.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["mald*"]
+
+[tool.setuptools.package-data]
+mald = ["config/*", "templates/*"]
+
+[tool.black]
+line-length = 88
+target-version = ['py38']
+
+[tool.mypy]
+python_version = "3.8"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "--cov=mald --cov-report=term-missing"
