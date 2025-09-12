@@ -9,7 +9,7 @@ import logging
 from pathlib import Path
 
 from . import __version__
-from .commands import init, kb, session, iso, ai, config
+from .commands import init, kb, session, iso, ai, config, execute
 
 
 def setup_logging(verbose: bool = False):
