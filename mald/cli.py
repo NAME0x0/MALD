@@ -77,8 +77,36 @@ def create_parser():
     
     ai_setup = ai_subparsers.add_parser('setup', help='Setup local AI models')
     ai_chat = ai_subparsers.add_parser('chat', help='Start AI chat session')
+    
     ai_index = ai_subparsers.add_parser('index', help='Index knowledge base for RAG')
     ai_index.add_argument('kb', help='Knowledge base to index')
+    
+    ai_search = ai_subparsers.add_parser('search', help='Search knowledge base')
+    ai_search.add_argument('kb', help='Knowledge base to search')
+    ai_search.add_argument('query', help='Search query')
+    
+    ai_ask = ai_subparsers.add_parser('ask', help='Ask question to knowledge base')
+    ai_ask.add_argument('kb', help='Knowledge base to query')
+    ai_ask.add_argument('query', help='Question to ask')
+    
+    # Execute command
+    exec_parser = subparsers.add_parser('exec', help='Execute code blocks in markdown')
+    exec_subparsers = exec_parser.add_subparsers(dest='exec_action')
+    
+    exec_file = exec_subparsers.add_parser('file', help='Execute all cells in file')
+    exec_file.add_argument('file', help='Markdown file path')
+    exec_file.add_argument('--session', dest='session_id', default='default', help='Execution session ID')
+    
+    exec_cell = exec_subparsers.add_parser('cell', help='Execute specific cell')
+    exec_cell.add_argument('file', help='Markdown file path')
+    exec_cell.add_argument('cell_id', help='Cell ID to execute')
+    exec_cell.add_argument('--session', dest='session_id', default='default', help='Execution session ID')
+    
+    exec_list = exec_subparsers.add_parser('list', help='List code cells in file')
+    exec_list.add_argument('file', help='Markdown file path')
+    
+    exec_clear = exec_subparsers.add_parser('clear', help='Clear execution session')
+    exec_clear.add_argument('session_id', help='Session ID to clear (or "all")')
     
     # Config command
     config_parser = subparsers.add_parser('config', help='Configuration management')
@@ -120,6 +148,8 @@ def main():
             return ai.handle(args)
         elif args.command == 'config':
             return config.handle(args)
+        elif args.command == 'exec':
+            return execute.handle(args)
         else:
             logger.error(f"Unknown command: {args.command}")
             return 1
