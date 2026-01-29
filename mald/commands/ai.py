@@ -90,46 +90,39 @@ def _install_ollama():
         logger.info("Installing Ollama...")
 
         # Download install script to a temp file first
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".sh", delete=False
-        ) as tmp:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".sh", delete=False) as tmp:
             tmp_path = tmp.name
 
         dl_result = subprocess.run(
             [
-                "curl", "-fsSL",
+                "curl",
+                "-fsSL",
                 "https://ollama.ai/install.sh",
-                "-o", tmp_path,
+                "-o",
+                tmp_path,
             ],
             capture_output=True,
             text=True,
         )
         if dl_result.returncode != 0:
-            logger.error(
-                f"Failed to download Ollama installer: "
-                f"{dl_result.stderr}"
-            )
+            logger.error(f"Failed to download Ollama installer: " f"{dl_result.stderr}")
             return
 
         # Ask for confirmation before executing
-        answer = input(
-            "Run the downloaded Ollama install script? [y/N] "
-        ).strip().lower()
+        answer = (
+            input("Run the downloaded Ollama install script? [y/N] ").strip().lower()
+        )
         if answer != "y":
             logger.info("Ollama installation cancelled by user")
             return
 
-        result = subprocess.run(
-            ["sh", tmp_path], capture_output=True, text=True
-        )
+        result = subprocess.run(["sh", tmp_path], capture_output=True, text=True)
 
         if result.returncode == 0:
             logger.info("Ollama installed successfully")
             _setup_ollama()
         else:
-            logger.error(
-                f"Failed to install Ollama: {result.stderr}"
-            )
+            logger.error(f"Failed to install Ollama: {result.stderr}")
 
     except Exception as e:
         logger.error(f"Failed to install Ollama: {e}")

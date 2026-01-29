@@ -190,7 +190,7 @@ set -g status-right '#[fg=colour233,bg=colour245,bold] %H:%M '
 
 # Window status
 setw -g window-status-current-style fg=colour81,bg=colour238,bold
-setw -g window-status-current-format ' #I#[fg=colour250]:#[fg=colour255]#W#[fg=colour50]#F '
+setw -g window-status-current-format ' #I:#W#F '
 setw -g window-status-style fg=colour138,bg=colour235,none
 setw -g window-status-format ' #I#[fg=colour237]:#[fg=colour250]#W#[fg=colour244]#F '
 
