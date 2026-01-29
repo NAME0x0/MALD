@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -m pytest tests/ -v --no-header -q)",
+      "Bash(python -m flake8:*)",
+      "Bash(findstr:*)",
+      "Bash(git stash:*)",
+      "Bash(python -m pytest:*)"
+    ]
+  }
+}

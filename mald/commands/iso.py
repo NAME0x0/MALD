@@ -15,9 +15,11 @@ def handle(args):
     if not args.iso_action:
         logger.error("No ISO action specified")
         return 1
-    
-    if args.iso_action == 'build':
+
+    if args.iso_action == "build":
         return _build_iso(args)
+    elif args.iso_action == "wsl":
+        return _build_wsl(args)
     else:
         logger.error(f"Unknown ISO action: {args.iso_action}")
         return 1
@@ -26,41 +28,38 @@ def handle(args):
 def _build_iso(args):
     """Build MALD ISO"""
     logger.info("Building MALD ISO...")
-    
+
     # Get the project root
     project_root = Path(__file__).parent.parent.parent
-    iso_dir = project_root / 'iso'
-    
+    iso_dir = project_root / "iso"
+
     if not iso_dir.exists():
         logger.error("ISO build directory not found")
         return 1
-    
-    build_script = iso_dir / 'build.sh'
-    
+
+    build_script = iso_dir / "build.sh"
+
     if not build_script.exists():
         logger.error("ISO build script not found")
         logger.info("Creating basic build script...")
         _create_build_script(build_script)
-    
+
     # Set output directory
-    output_dir = Path(args.output) if args.output else iso_dir / 'output'
+    output_dir = Path(args.output) if args.output else iso_dir / "output"
     output_dir.mkdir(parents=True, exist_ok=True)
-    
+
     try:
         # Run the build script
         env = {
-            'MALD_OUTPUT_DIR': str(output_dir),
-            'MALD_ISO_DIR': str(iso_dir),
-            **dict(subprocess.os.environ)
+            "MALD_OUTPUT_DIR": str(output_dir),
+            "MALD_ISO_DIR": str(iso_dir),
+            **dict(subprocess.os.environ),
         }
-        
+
         result = subprocess.run(
-            ['bash', str(build_script)],
-            cwd=iso_dir,
-            env=env,
-            capture_output=False
+            ["bash", str(build_script)], cwd=iso_dir, env=env, capture_output=False
         )
-        
+
         if result.returncode == 0:
             logger.info(f"ISO build completed successfully")
             logger.info(f"Output directory: {output_dir}")
@@ -68,9 +67,53 @@ def _build_iso(args):
         else:
             logger.error("ISO build failed")
             return 1
-            
+
     except Exception as e:
         logger.error(f"Failed to build ISO: {e}")
+        return 1
+
+
+def _build_wsl(args):
+    """Build WSL distro tarball"""
+    logger.info("Building MALD WSL tarball...")
+
+    project_root = Path(__file__).parent.parent.parent
+    iso_dir = project_root / "iso"
+
+    if not iso_dir.exists():
+        logger.error("ISO build directory not found")
+        return 1
+
+    build_script = iso_dir / "build-wsl.sh"
+
+    if not build_script.exists():
+        logger.error("WSL build script not found")
+        return 1
+
+    output_dir = Path(args.output) if args.output else iso_dir / "output"
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    try:
+        env = {
+            "MALD_OUTPUT_DIR": str(output_dir),
+            "MALD_ISO_DIR": str(iso_dir),
+            **dict(subprocess.os.environ),
+        }
+
+        result = subprocess.run(
+            ["bash", str(build_script)], cwd=iso_dir, env=env, capture_output=False
+        )
+
+        if result.returncode == 0:
+            logger.info("WSL tarball build completed successfully")
+            logger.info(f"Output directory: {output_dir}")
+            return 0
+        else:
+            logger.error("WSL tarball build failed")
+            return 1
+
+    except Exception as e:
+        logger.error(f"Failed to build WSL tarball: {e}")
         return 1
 
 
@@ -97,7 +140,7 @@ echo "- AI tools (Ollama, llama.cpp)"
 
 echo "Build script placeholder completed."
 """
-    
+
     build_script.write_text(content)
     build_script.chmod(0o755)
     logger.info(f"Created build script: {build_script}")

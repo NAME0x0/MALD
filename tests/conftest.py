@@ -7,33 +7,40 @@ import tempfile
 import pytest
 from pathlib import Path
 
+
 @pytest.fixture
 def temp_mald_home():
     """Create temporary MALD home directory for testing"""
     with tempfile.TemporaryDirectory() as temp_dir:
-        mald_home = Path(temp_dir) / '.mald'
-        mald_home.mkdir()
-        
-        # Set environment variable
-        old_home = os.environ.get('HOME')
-        os.environ['HOME'] = str(Path(temp_dir))
-        
+        mald_home = Path(temp_dir) / ".mald"
+
+        # Set environment variable (USERPROFILE on Windows, HOME on Unix)
+        old_home = os.environ.get("HOME")
+        old_userprofile = os.environ.get("USERPROFILE")
+        os.environ["HOME"] = str(Path(temp_dir))
+        os.environ["USERPROFILE"] = str(Path(temp_dir))
+
         yield mald_home
-        
+
         # Restore environment
         if old_home:
-            os.environ['HOME'] = old_home
+            os.environ["HOME"] = old_home
         else:
-            os.environ.pop('HOME', None)
+            os.environ.pop("HOME", None)
+        if old_userprofile:
+            os.environ["USERPROFILE"] = old_userprofile
+        else:
+            os.environ.pop("USERPROFILE", None)
+
 
 @pytest.fixture
 def sample_kb_path(temp_mald_home):
     """Create sample knowledge base for testing"""
-    kb_path = temp_mald_home / 'kb' / 'test'
+    kb_path = temp_mald_home / "kb" / "test"
     kb_path.mkdir(parents=True)
-    
+
     # Create sample markdown file
-    sample_note = kb_path / 'test_note.md'
+    sample_note = kb_path / "test_note.md"
     sample_content = """# Test Note
 
 This is a test note with [[links]] and #tags.
@@ -51,5 +58,5 @@ print("Hello, MALD!")
 Tags: #test #sample
 """
     sample_note.write_text(sample_content)
-    
+
     return kb_path

@@ -2,9 +2,10 @@
 MALD knowledge base command - Manage knowledge bases
 """
 
+import subprocess
 import logging
 from pathlib import Path
-from ..utils import filesystem, markdown_parser
+from ..utils import config_manager
 
 
 logger = logging.getLogger(__name__)
@@ -15,12 +16,12 @@ def handle(args):
     if not args.kb_action:
         logger.error("No knowledge base action specified")
         return 1
-    
-    if args.kb_action == 'create':
+
+    if args.kb_action == "create":
         return _create_kb(args.name)
-    elif args.kb_action == 'list':
+    elif args.kb_action == "list":
         return _list_kbs()
-    elif args.kb_action == 'open':
+    elif args.kb_action == "open":
         return _open_kb(args.name)
     else:
         logger.error(f"Unknown knowledge base action: {args.kb_action}")
@@ -29,18 +30,18 @@ def handle(args):
 
 def _create_kb(name):
     """Create a new knowledge base"""
-    mald_home = Path.home() / '.mald'
-    kb_path = mald_home / 'kb' / name
-    
+    mald_home = Path.home() / ".mald"
+    kb_path = mald_home / "kb" / name
+
     if kb_path.exists():
         logger.error(f"Knowledge base '{name}' already exists")
         return 1
-    
+
     try:
         kb_path.mkdir(parents=True)
-        
+
         # Create index file
-        index_file = kb_path / 'index.md'
+        index_file = kb_path / "index.md"
         index_content = f"""# {name}
 
 Welcome to your **{name}** knowledge base.
@@ -71,15 +72,16 @@ Use tags to organize your content:
 ---
 *Knowledge base created: {name}*
 """
-        
+
         index_file.write_text(index_content)
-        
+
         # Create basic structure
-        templates_dir = kb_path / 'templates'
+        templates_dir = kb_path / "templates"
         templates_dir.mkdir()
-        
-        daily_template = templates_dir / 'daily.md'
-        daily_template.write_text("""# {{date}}
+
+        daily_template = templates_dir / "daily.md"
+        daily_template.write_text(
+            """# {{date}}
 
 ## Goals
 - [ ] 
@@ -95,10 +97,12 @@ Use tags to organize your content:
 
 ---
 Tags: #daily
-""")
-        
-        project_template = templates_dir / 'project.md'
-        project_template.write_text("""# {{title}}
+"""
+        )
+
+        project_template = templates_dir / "project.md"
+        project_template.write_text(
+            """# {{title}}
 
 ## Overview
 
@@ -117,14 +121,15 @@ Tags: #daily
 
 ---
 Tags: #project
-""")
-        
+"""
+        )
+
         logger.info(f"Created knowledge base: {name}")
         logger.info(f"Location: {kb_path}")
         logger.info(f"Open with: mald kb open {name}")
-        
+
         return 0
-        
+
     except Exception as e:
         logger.error(f"Failed to create knowledge base: {e}")
         return 1
@@ -132,59 +137,62 @@ Tags: #project
 
 def _list_kbs():
     """List all knowledge bases"""
-    mald_home = Path.home() / '.mald'
-    kb_dir = mald_home / 'kb'
-    
+    mald_home = Path.home() / ".mald"
+    kb_dir = mald_home / "kb"
+
     if not kb_dir.exists():
         logger.info("No knowledge bases found. Create one with 'mald kb create <name>'")
         return 0
-    
+
     kbs = [d for d in kb_dir.iterdir() if d.is_dir()]
-    
+
     if not kbs:
         logger.info("No knowledge bases found. Create one with 'mald kb create <name>'")
         return 0
-    
+
     logger.info("Available knowledge bases:")
     for kb in sorted(kbs):
-        index_file = kb / 'index.md'
-        note_count = len(list(kb.glob('*.md')))
-        
+        index_file = kb / "index.md"
+        note_count = len(list(kb.glob("*.md")))
+
         status = "✓" if index_file.exists() else "!"
         logger.info(f"  {status} {kb.name} ({note_count} notes)")
-    
+
     return 0
 
 
 def _open_kb(name):
     """Open a knowledge base"""
-    mald_home = Path.home() / '.mald'
-    kb_path = mald_home / 'kb' / name
-    
+    mald_home = Path.home() / ".mald"
+    kb_path = mald_home / "kb" / name
+
     if not kb_path.exists():
         logger.error(f"Knowledge base '{name}' not found")
         logger.info("Available knowledge bases:")
         _list_kbs()
         return 1
-    
-    index_file = kb_path / 'index.md'
-    
+
+    index_file = kb_path / "index.md"
+
     if index_file.exists():
         logger.info(f"Opening knowledge base: {name}")
         logger.info(f"Location: {kb_path}")
-        
-        # For now, just print the index content
-        # In a full implementation, this would launch the editor
+
+        editor = config_manager.get_config_value("editor.default", "nvim")
         try:
-            content = index_file.read_text()
-            print("\n" + "="*50)
-            print(content)
-            print("="*50 + "\n")
-        except Exception as e:
-            logger.error(f"Failed to read index file: {e}")
-            return 1
+            subprocess.run([editor, str(index_file)])
+        except Exception:
+            # Fall back to printing content if editor launch fails
+            try:
+                content = index_file.read_text()
+                print("\n" + "=" * 50)
+                print(content)
+                print("=" * 50 + "\n")
+            except Exception as e:
+                logger.error(f"Failed to read index file: {e}")
+                return 1
     else:
         logger.warning(f"Knowledge base '{name}' exists but has no index file")
         logger.info(f"Location: {kb_path}")
-    
+
     return 0
