@@ -1,0 +1,17 @@
+.git
+.github
+.claude
+.vscode
+.mypy_cache
+.pytest_cache
+__pycache__
+*.pyc
+*.egg-info
+dist
+build
+output
+coverage.xml
+.coverage
+*.iso
+*.tar.gz
+NUL
