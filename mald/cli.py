@@ -6,8 +6,6 @@ MALD CLI - Main command-line interface for MALD system
 import sys
 import argparse
 import logging
-from pathlib import Path
-
 from . import __version__
 from .commands import init, kb, session, iso, ai, config
 
@@ -48,7 +46,7 @@ def create_parser():
     kb_create = kb_subparsers.add_parser("create", help="Create new knowledge base")
     kb_create.add_argument("name", help="Knowledge base name")
 
-    kb_list = kb_subparsers.add_parser("list", help="List knowledge bases")
+    kb_subparsers.add_parser("list", help="List knowledge bases")
 
     kb_open = kb_subparsers.add_parser("open", help="Open knowledge base")
     kb_open.add_argument("name", help="Knowledge base name")
@@ -76,8 +74,8 @@ def create_parser():
     ai_parser = subparsers.add_parser("ai", help="AI and RAG management")
     ai_subparsers = ai_parser.add_subparsers(dest="ai_action")
 
-    ai_setup = ai_subparsers.add_parser("setup", help="Setup local AI models")
-    ai_chat = ai_subparsers.add_parser("chat", help="Start AI chat session")
+    ai_subparsers.add_parser("setup", help="Setup local AI models")
+    ai_subparsers.add_parser("chat", help="Start AI chat session")
     ai_index = ai_subparsers.add_parser("index", help="Index knowledge base for RAG")
     ai_index.add_argument("kb", help="Knowledge base to index")
 

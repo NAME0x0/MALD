@@ -61,7 +61,7 @@ def _build_iso(args):
         )
 
         if result.returncode == 0:
-            logger.info(f"ISO build completed successfully")
+            logger.info("ISO build completed successfully")
             logger.info(f"Output directory: {output_dir}")
             return 0
         else:

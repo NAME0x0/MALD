@@ -2,8 +2,6 @@
 Test MALD markdown parsing utilities
 """
 
-import pytest
-from pathlib import Path
 from mald.utils.markdown_parser import (
     MarkdownDocument,
     parse_knowledge_base,

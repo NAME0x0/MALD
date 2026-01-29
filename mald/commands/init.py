@@ -2,10 +2,9 @@
 MALD init command - Initialize MALD environment
 """
 
-import os
 import logging
 from pathlib import Path
-from ..utils import config_manager, filesystem
+from ..utils import config_manager
 
 
 logger = logging.getLogger(__name__)
@@ -186,8 +185,8 @@ bind - split-window -v -c "#{pane_current_path}"
 
 # Status bar
 set -g status-style bg=colour234,fg=colour137
-set -g status-left '#[fg=colour233,bg=colour245,bold] MALD #[fg=colour245,bg=colour234,nobold]'
-set -g status-right '#[fg=colour233,bg=colour245,bold] %Y-%m-%d %H:%M '
+set -g status-left '#[fg=colour233,bg=colour245,bold] MALD '
+set -g status-right '#[fg=colour233,bg=colour245,bold] %H:%M '
 
 # Window status
 setw -g window-status-current-style fg=colour81,bg=colour238,bold

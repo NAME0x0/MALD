@@ -36,8 +36,6 @@ def _setup_ai():
 
     mald_home = Path.home() / ".mald"
     ai_dir = mald_home / "ai"
-    models_dir = ai_dir / "models"
-
     if not ai_dir.exists():
         logger.error("MALD environment not initialized. Run 'mald init' first.")
         return 1

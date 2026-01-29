@@ -84,7 +84,7 @@ Use tags to organize your content:
             """# {{date}}
 
 ## Goals
-- [ ] 
+- [ ]
 
 ## Notes
 
@@ -93,7 +93,7 @@ Use tags to organize your content:
 
 
 ## Links
-- 
+-
 
 ---
 Tags: #daily
@@ -108,16 +108,16 @@ Tags: #daily
 
 
 ## Goals
-- [ ] 
+- [ ]
 
 ## Resources
-- 
+-
 
 ## Progress
 
 
 ## Next Steps
-- [ ] 
+- [ ]
 
 ---
 Tags: #project

@@ -3,7 +3,6 @@ Test MALD CLI functionality
 """
 
 import pytest
-from pathlib import Path
 from mald.cli import create_parser
 from mald.commands import init, kb
 from mald.utils import config_manager
