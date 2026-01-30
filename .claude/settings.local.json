@@ -5,7 +5,8 @@
       "Bash(python -m flake8:*)",
       "Bash(findstr:*)",
       "Bash(git stash:*)",
-      "Bash(python -m pytest:*)"
+      "Bash(python -m pytest:*)",
+      "Bash(python -m black:*)"
     ]
   }
 }
