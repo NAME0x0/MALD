@@ -79,6 +79,11 @@ install_packages() {
     mkdir -p "${BOOTSTRAP_DIR}/rootfs"
     mount --bind "${ROOTFS_DIR}" "${BOOTSTRAP_DIR}/rootfs"
 
+    # Create vconsole.conf before pacman runs so mkinitcpio's sd-vconsole hook
+    # doesn't error during post-install.
+    mkdir -p "${BOOTSTRAP_DIR}/rootfs/etc"
+    echo "KEYMAP=us" > "${BOOTSTRAP_DIR}/rootfs/etc/vconsole.conf"
+
     # Mount dev/proc/sys into rootfs inside bootstrap so pacman post-install
     # hooks (mkinitcpio, systemd-tmpfiles, etc.) can run properly.
     mkdir -p "${BOOTSTRAP_DIR}/rootfs/dev" \
@@ -123,12 +128,13 @@ configure_rootfs() {
     mount --bind /proc "${ROOTFS_DIR}/proc"
     mount --bind /sys "${ROOTFS_DIR}/sys"
 
-    # Locale and timezone
+    # Locale, timezone, and console
     chroot "${ROOTFS_DIR}" bash -c '
         echo "en_US.UTF-8 UTF-8" > /etc/locale.gen
         locale-gen
         echo "LANG=en_US.UTF-8" > /etc/locale.conf
         ln -sf /usr/share/zoneinfo/UTC /etc/localtime
+        echo "KEYMAP=us" > /etc/vconsole.conf
     '
 
     # Regenerate initramfs if missing (pacman post-install hooks may fail in -r mode)
