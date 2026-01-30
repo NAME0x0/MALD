@@ -7,7 +7,6 @@ import logging
 
 from ..utils import config_manager
 
-
 logger = logging.getLogger(__name__)
 
 

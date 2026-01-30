@@ -6,7 +6,6 @@ import logging
 from pathlib import Path
 from ..utils import config_manager
 
-
 logger = logging.getLogger(__name__)
 
 

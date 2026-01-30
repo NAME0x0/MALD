@@ -7,7 +7,6 @@ import logging
 from pathlib import Path
 from ..utils import config_manager
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -80,8 +79,7 @@ Use tags to organize your content:
         templates_dir.mkdir()
 
         daily_template = templates_dir / "daily.md"
-        daily_template.write_text(
-            """# {{date}}
+        daily_template.write_text("""# {{date}}
 
 ## Goals
 - [ ]
@@ -97,12 +95,10 @@ Use tags to organize your content:
 
 ---
 Tags: #daily
-"""
-        )
+""")
 
         project_template = templates_dir / "project.md"
-        project_template.write_text(
-            """# {{title}}
+        project_template.write_text("""# {{title}}
 
 ## Overview
 
@@ -121,8 +117,7 @@ Tags: #daily
 
 ---
 Tags: #project
-"""
-        )
+""")
 
         logger.info(f"Created knowledge base: {name}")
         logger.info(f"Location: {kb_path}")

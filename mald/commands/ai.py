@@ -9,7 +9,6 @@ from pathlib import Path
 
 from ..utils.filesystem import command_exists
 
-
 logger = logging.getLogger(__name__)
 
 
