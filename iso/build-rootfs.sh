@@ -75,8 +75,14 @@ install_packages() {
     mkdir -p "${BOOTSTRAP_DIR}/rootfs"
     mount --bind "${ROOTFS_DIR}" "${BOOTSTRAP_DIR}/rootfs"
 
+    # Core packages; kernel/firmware skipped when MALD_NO_KERNEL=1 (e.g. WSL, CI)
+    local kernel_pkgs=""
+    if [[ "${MALD_NO_KERNEL:-0}" != "1" ]]; then
+        kernel_pkgs="linux linux-firmware"
+    fi
+
     chroot "${BOOTSTRAP_DIR}" pacman -r /rootfs -Sy --noconfirm \
-        base linux linux-firmware \
+        base ${kernel_pkgs} \
         neovim tmux fzf ripgrep fd \
         btrfs-progs \
         python python-pip python-yaml \

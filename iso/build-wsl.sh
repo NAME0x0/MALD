@@ -16,6 +16,7 @@ echo "Build directory: ${BUILD_DIR}"
 # Build shared rootfs
 echo "Building rootfs..."
 export MALD_VERSION BUILD_DIR MALD_OUTPUT_DIR="${BUILD_DIR}" MALD_ISO_DIR="${ISO_DIR}"
+export MALD_NO_KERNEL=1  # WSL uses the Windows kernel; skip linux + linux-firmware
 bash "${ISO_DIR}/build-rootfs.sh"
 
 # Apply WSL-specific configuration
