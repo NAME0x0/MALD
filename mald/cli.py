@@ -10,7 +10,7 @@ from . import __version__
 from .commands import init, kb, session, iso, ai, config
 
 
-def setup_logging(verbose: bool = False):
+def setup_logging(verbose: bool = False) -> None:
     """Setup logging configuration"""
     level = logging.DEBUG if verbose else logging.INFO
     logging.basicConfig(
@@ -18,7 +18,7 @@ def setup_logging(verbose: bool = False):
     )
 
 
-def create_parser():
+def create_parser() -> argparse.ArgumentParser:
     """Create the argument parser"""
     parser = argparse.ArgumentParser(
         prog="mald", description="MALD - Markdown Archive Linux Distribution CLI"
@@ -93,7 +93,7 @@ def create_parser():
     return parser
 
 
-def main():
+def main() -> int:
     """Main CLI entry point"""
     parser = create_parser()
     args = parser.parse_args()

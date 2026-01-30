@@ -7,18 +7,19 @@ import shutil
 import time
 import logging
 from pathlib import Path
+from typing import Optional, Union
 
 logger = logging.getLogger(__name__)
 
 
-def ensure_directory(path):
+def ensure_directory(path: Union[str, Path]) -> Path:
     """Ensure directory exists, create if necessary"""
     path = Path(path)
     path.mkdir(parents=True, exist_ok=True)
     return path
 
 
-def safe_copy(src, dst):
+def safe_copy(src: Union[str, Path], dst: Union[str, Path]) -> bool:
     """Safely copy file or directory"""
     try:
         src = Path(src)
@@ -36,7 +37,7 @@ def safe_copy(src, dst):
         return False
 
 
-def safe_move(src, dst):
+def safe_move(src: Union[str, Path], dst: Union[str, Path]) -> bool:
     """Safely move file or directory"""
     try:
         src = Path(src)
@@ -50,7 +51,7 @@ def safe_move(src, dst):
         return False
 
 
-def safe_delete(path, secure=False):
+def safe_delete(path: Union[str, Path], secure: bool = False) -> bool:
     """Safely delete file or directory"""
     try:
         path = Path(path)
@@ -73,7 +74,7 @@ def safe_delete(path, secure=False):
         return False
 
 
-def _secure_delete_file(file_path):
+def _secure_delete_file(file_path: Path) -> None:
     """Securely delete a file by overwriting with random data"""
     try:
         file_size = file_path.stat().st_size
@@ -90,7 +91,9 @@ def _secure_delete_file(file_path):
         logger.warning(f"Secure delete failed for {file_path}: {e}")
 
 
-def find_files(directory, pattern="*", recursive=True):
+def find_files(
+    directory: Union[str, Path], pattern: str = "*", recursive: bool = True
+) -> list[Path]:
     """Find files matching pattern"""
     directory = Path(directory)
 
@@ -100,7 +103,7 @@ def find_files(directory, pattern="*", recursive=True):
         return list(directory.glob(pattern))
 
 
-def get_file_info(path):
+def get_file_info(path: Union[str, Path]) -> Optional[dict[str, object]]:
     """Get file information"""
     path = Path(path)
 
@@ -121,7 +124,11 @@ def get_file_info(path):
     }
 
 
-def create_backup(source, backup_dir, compress=True):
+def create_backup(
+    source: Union[str, Path],
+    backup_dir: Union[str, Path],
+    compress: bool = True,
+) -> Optional[Path]:
     """Create backup of file or directory"""
     try:
         source = Path(source)
@@ -146,7 +153,7 @@ def create_backup(source, backup_dir, compress=True):
         return None
 
 
-def _create_compressed_backup(source, backup_path):
+def _create_compressed_backup(source: Path, backup_path: Path) -> None:
     """Create compressed backup using tar"""
     import tarfile
 
@@ -154,7 +161,7 @@ def _create_compressed_backup(source, backup_path):
         tar.add(source, arcname=source.name)
 
 
-def cleanup_old_backups(backup_dir, retention_days=30):
+def cleanup_old_backups(backup_dir: Union[str, Path], retention_days: int = 30) -> None:
     """Cleanup old backups"""
     backup_dir = Path(backup_dir)
     if not backup_dir.exists():

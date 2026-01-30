@@ -5,17 +5,18 @@ MALD configuration manager
 import json
 import logging
 from pathlib import Path
+from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
 
-def initialize_default_config(mald_home):
+def initialize_default_config(mald_home: Path) -> dict[str, Any]:
     """Initialize default MALD configuration"""
     config_dir = mald_home / "config"
     config_dir.mkdir(parents=True, exist_ok=True)  # Ensure config dir exists
     config_file = config_dir / "config.json"
 
-    default_config = {
+    default_config: dict[str, Any] = {
         "version": "0.1.0",
         "mald_home": str(mald_home),
         "editor": {
@@ -69,7 +70,7 @@ def initialize_default_config(mald_home):
     return default_config
 
 
-def load_config():
+def load_config() -> Optional[dict[str, Any]]:
     """Load MALD configuration"""
     mald_home = Path.home() / ".mald"
     config_file = mald_home / "config" / "config.json"
@@ -80,13 +81,13 @@ def load_config():
 
     try:
         with open(config_file) as f:
-            return json.load(f)
+            return json.load(f)  # type: ignore[no-any-return]
     except Exception as e:
         logger.error(f"Failed to load configuration: {e}")
         return None
 
 
-def save_config(config):
+def save_config(config: dict[str, Any]) -> bool:
     """Save MALD configuration"""
     mald_home = Path.home() / ".mald"
     config_file = mald_home / "config" / "config.json"
@@ -100,14 +101,14 @@ def save_config(config):
         return False
 
 
-def get_config_value(key, default=None):
+def get_config_value(key: str, default: Any = None) -> Any:
     """Get a configuration value by key"""
     config = load_config()
     if not config:
         return default
 
     keys = key.split(".")
-    value = config
+    value: Any = config
 
     try:
         for k in keys:
@@ -117,14 +118,14 @@ def get_config_value(key, default=None):
         return default
 
 
-def set_config_value(key, value):
+def set_config_value(key: str, value: Any) -> bool:
     """Set a configuration value by key"""
     config = load_config()
     if not config:
         return False
 
     keys = key.split(".")
-    target = config
+    target: Any = config
 
     # Navigate to parent
     for k in keys[:-1]:

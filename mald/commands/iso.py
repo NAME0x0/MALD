@@ -2,14 +2,16 @@
 MALD ISO command - Build and manage MALD ISO
 """
 
+import argparse
 import logging
+import os
 import subprocess
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
 
-def handle(args):
+def handle(args: argparse.Namespace) -> int:
     """Handle the iso command"""
     if not args.iso_action:
         logger.error("No ISO action specified")
@@ -24,7 +26,7 @@ def handle(args):
         return 1
 
 
-def _build_iso(args):
+def _build_iso(args: argparse.Namespace) -> int:
     """Build MALD ISO"""
     logger.info("Building MALD ISO...")
 
@@ -52,7 +54,7 @@ def _build_iso(args):
         env = {
             "MALD_OUTPUT_DIR": str(output_dir),
             "MALD_ISO_DIR": str(iso_dir),
-            **dict(subprocess.os.environ),
+            **dict(os.environ),
         }
 
         result = subprocess.run(
@@ -72,7 +74,7 @@ def _build_iso(args):
         return 1
 
 
-def _build_wsl(args):
+def _build_wsl(args: argparse.Namespace) -> int:
     """Build WSL distro tarball"""
     logger.info("Building MALD WSL tarball...")
 
@@ -96,7 +98,7 @@ def _build_wsl(args):
         env = {
             "MALD_OUTPUT_DIR": str(output_dir),
             "MALD_ISO_DIR": str(iso_dir),
-            **dict(subprocess.os.environ),
+            **dict(os.environ),
         }
 
         result = subprocess.run(
@@ -116,7 +118,7 @@ def _build_wsl(args):
         return 1
 
 
-def _create_build_script(build_script):
+def _create_build_script(build_script: Path) -> None:
     """Create a basic ISO build script"""
     content = """#!/bin/bash
 # MALD ISO Build Script

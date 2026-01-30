@@ -2,6 +2,7 @@
 MALD config command - Configuration management
 """
 
+import argparse
 import json
 import logging
 
@@ -10,7 +11,7 @@ from ..utils import config_manager
 logger = logging.getLogger(__name__)
 
 
-def handle(args):
+def handle(args: argparse.Namespace) -> int:
     """Handle the config command"""
     if not args.config_action:
         logger.error("No config action specified")
@@ -25,7 +26,7 @@ def handle(args):
         return 1
 
 
-def _get_config(key):
+def _get_config(key: str) -> int:
     """Get configuration value"""
     value = config_manager.get_config_value(key)
 
@@ -37,7 +38,7 @@ def _get_config(key):
     return 0
 
 
-def _set_config(key, value):
+def _set_config(key: str, value: str) -> int:
     """Set configuration value"""
     # Try to parse as JSON for complex values
     try:

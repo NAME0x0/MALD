@@ -2,6 +2,7 @@
 MALD session command - Start MALD interactive session
 """
 
+import argparse
 import os
 import subprocess
 import logging
@@ -12,7 +13,7 @@ from ..utils.filesystem import command_exists
 logger = logging.getLogger(__name__)
 
 
-def handle(args):
+def handle(args: argparse.Namespace) -> int:
     """Handle the session command"""
     logger.info("Starting MALD interactive session...")
 
@@ -50,7 +51,9 @@ def handle(args):
         return 1
 
 
-def _start_tmux_session(session_name, tmux_config, env):
+def _start_tmux_session(
+    session_name: str, tmux_config: Path, env: dict[str, str]
+) -> int:
     """Start a tmux session"""
     logger.info(f"Starting tmux session: {session_name}")
 
@@ -92,7 +95,7 @@ def _start_tmux_session(session_name, tmux_config, env):
         return 1
 
 
-def _setup_tmux_windows(session_name, env):
+def _setup_tmux_windows(session_name: str, env: dict[str, str]) -> None:
     """Setup tmux windows for MALD workflow"""
 
     # Window 1: Editor (neovim)
@@ -123,7 +126,7 @@ def _setup_tmux_windows(session_name, env):
     subprocess.run(["tmux", "select-window", "-t", f"{session_name}:1"], env=env)
 
 
-def _start_shell_session(env):
+def _start_shell_session(env: dict[str, str]) -> int:
     """Start a shell session with MALD environment"""
     logger.info("Starting MALD shell session...")
 

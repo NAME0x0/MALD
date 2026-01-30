@@ -2,6 +2,7 @@
 MALD knowledge base command - Manage knowledge bases
 """
 
+import argparse
 import subprocess
 import logging
 from pathlib import Path
@@ -10,7 +11,7 @@ from ..utils import config_manager
 logger = logging.getLogger(__name__)
 
 
-def handle(args):
+def handle(args: argparse.Namespace) -> int:
     """Handle the kb command"""
     if not args.kb_action:
         logger.error("No knowledge base action specified")
@@ -27,7 +28,7 @@ def handle(args):
         return 1
 
 
-def _create_kb(name):
+def _create_kb(name: str) -> int:
     """Create a new knowledge base"""
     mald_home = Path.home() / ".mald"
     kb_path = mald_home / "kb" / name
@@ -130,7 +131,7 @@ Tags: #project
         return 1
 
 
-def _list_kbs():
+def _list_kbs() -> int:
     """List all knowledge bases"""
     mald_home = Path.home() / ".mald"
     kb_dir = mald_home / "kb"
@@ -156,7 +157,7 @@ def _list_kbs():
     return 0
 
 
-def _open_kb(name):
+def _open_kb(name: str) -> int:
     """Open a knowledge base"""
     mald_home = Path.home() / ".mald"
     kb_path = mald_home / "kb" / name

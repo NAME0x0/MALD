@@ -5,7 +5,7 @@ MALD markdown parser utilities
 import re
 import logging
 from pathlib import Path
-from typing import Dict
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 class MarkdownDocument:
     """Represents a markdown document with MALD features"""
 
-    def __init__(self, path: Path, content: str = None):
+    def __init__(self, path: Path, content: Optional[str] = None):
         self.path = path
         self.content = content or self._load_content()
         self.title = self._extract_title()
@@ -22,7 +22,7 @@ class MarkdownDocument:
         self.code_blocks = self._extract_code_blocks()
         self.metadata = self._extract_metadata()
 
-    def _load_content(self):
+    def _load_content(self) -> str:
         """Load content from file"""
         try:
             return self.path.read_text(encoding="utf-8")
@@ -30,7 +30,7 @@ class MarkdownDocument:
             logger.error(f"Failed to load {self.path}: {e}")
             return ""
 
-    def _extract_title(self):
+    def _extract_title(self) -> str:
         """Extract document title"""
         # Try H1 heading first
         h1_match = re.search(r"^#\s+(.+)$", self.content, re.MULTILINE)
@@ -40,9 +40,9 @@ class MarkdownDocument:
         # Fall back to filename
         return self.path.stem
 
-    def _extract_links(self):
+    def _extract_links(self) -> List[str]:
         """Extract wikilinks and markdown links"""
-        links = set()
+        links: set[str] = set()
 
         # Wikilinks [[link]]
         wikilinks = re.findall(r"\[\[([^\]]+)\]\]", self.content)
@@ -60,7 +60,7 @@ class MarkdownDocument:
 
         return list(links)
 
-    def _extract_tags(self):
+    def _extract_tags(self) -> List[str]:
         """Extract hashtags, ignoring code blocks and headings"""
         # Strip fenced code blocks
         content = re.sub(r"```.*?```", "", self.content, flags=re.DOTALL)
@@ -69,9 +69,9 @@ class MarkdownDocument:
         tags = re.findall(r"#([a-zA-Z0-9_-]+)", content)
         return list(set(tags))  # Remove duplicates
 
-    def _extract_code_blocks(self):
+    def _extract_code_blocks(self) -> List[Dict[str, Any]]:
         """Extract code blocks with language and content"""
-        code_blocks = []
+        code_blocks: List[Dict[str, Any]] = []
 
         # Find fenced code blocks
         pattern = r"```(\w+)?\n(.*?)\n```"
@@ -92,9 +92,9 @@ class MarkdownDocument:
 
         return code_blocks
 
-    def _extract_metadata(self):
+    def _extract_metadata(self) -> Dict[str, Any]:
         """Extract YAML frontmatter metadata"""
-        metadata = {}
+        metadata: Dict[str, Any] = {}
 
         # Check for YAML frontmatter
         frontmatter_match = re.match(r"^---\n(.*?)\n---\n", self.content, re.DOTALL)
@@ -110,9 +110,9 @@ class MarkdownDocument:
 
         return metadata or {}
 
-    def get_backlinks(self, kb_path: Path):
+    def get_backlinks(self, kb_path: Path) -> List[Path]:
         """Find documents that link to this one"""
-        backlinks = []
+        backlinks: List[Path] = []
         target_name = self.path.stem
 
         for md_file in kb_path.glob("**/*.md"):
@@ -145,9 +145,9 @@ class MarkdownDocument:
         return backlinks
 
 
-def parse_knowledge_base(kb_path: Path):
+def parse_knowledge_base(kb_path: Path) -> Dict[str, MarkdownDocument]:
     """Parse all markdown files in a knowledge base"""
-    documents = {}
+    documents: Dict[str, MarkdownDocument] = {}
 
     for md_file in kb_path.glob("**/*.md"):
         try:
@@ -159,11 +159,13 @@ def parse_knowledge_base(kb_path: Path):
     return documents
 
 
-def find_orphaned_files(kb_path: Path, documents: Dict = None):
+def find_orphaned_files(
+    kb_path: Path, documents: Optional[Dict[str, MarkdownDocument]] = None
+) -> List[MarkdownDocument]:
     """Find markdown files with no incoming links"""
     if documents is None:
         documents = parse_knowledge_base(kb_path)
-    linked_files = set()
+    linked_files: set[str] = set()
 
     for doc in documents.values():
         for link in doc.links:
@@ -174,7 +176,7 @@ def find_orphaned_files(kb_path: Path, documents: Dict = None):
             normalized = link_path.lower().replace(" ", "_")
             linked_files.add(normalized)
 
-    orphaned = []
+    orphaned: List[MarkdownDocument] = []
     for rel_path, doc in documents.items():
         rel_normalized = rel_path.lower().replace(" ", "_")
         if (
@@ -187,12 +189,12 @@ def find_orphaned_files(kb_path: Path, documents: Dict = None):
     return orphaned
 
 
-def generate_graph_data(kb_path: Path):
+def generate_graph_data(kb_path: Path) -> Dict[str, List[Dict[str, Any]]]:
     """Generate graph data for visualization"""
     documents = parse_knowledge_base(kb_path)
 
-    nodes = []
-    edges = []
+    nodes: List[Dict[str, Any]] = []
+    edges: List[Dict[str, Any]] = []
 
     for rel_path, doc in documents.items():
         # Create node
@@ -222,17 +224,20 @@ def generate_graph_data(kb_path: Path):
 
 
 def search_content(
-    kb_path: Path, query: str, case_sensitive: bool = False, documents: Dict = None
-):
+    kb_path: Path,
+    query: str,
+    case_sensitive: bool = False,
+    documents: Optional[Dict[str, MarkdownDocument]] = None,
+) -> List[Dict[str, Any]]:
     """Search for content across all documents"""
-    results = []
+    results: List[Dict[str, Any]] = []
     if documents is None:
         documents = parse_knowledge_base(kb_path)
 
     flags = 0 if case_sensitive else re.IGNORECASE
 
     for rel_path, doc in documents.items():
-        matches = []
+        matches: List[Dict[str, Any]] = []
 
         for match in re.finditer(re.escape(query), doc.content, flags):
             # Get context around the match

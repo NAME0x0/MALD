@@ -2,6 +2,7 @@
 MALD init command - Initialize MALD environment
 """
 
+import argparse
 import logging
 from pathlib import Path
 from ..utils import config_manager
@@ -9,7 +10,7 @@ from ..utils import config_manager
 logger = logging.getLogger(__name__)
 
 
-def handle(args):
+def handle(args: argparse.Namespace) -> int:
     """Handle the init command"""
     logger.info("Initializing MALD environment...")
 
@@ -60,7 +61,7 @@ def handle(args):
         return 1
 
 
-def _create_default_kb(kb_path):
+def _create_default_kb(kb_path: Path) -> None:
     """Create a default knowledge base"""
     kb_path.mkdir(parents=True, exist_ok=True)
 
@@ -144,7 +145,7 @@ Use tags: #getting-started #welcome #mald
     logger.info(f"Created default knowledge base at {kb_path}")
 
 
-def _setup_tmux_config(mald_home):
+def _setup_tmux_config(mald_home: Path) -> None:
     """Setup tmux configuration"""
     config_dir = mald_home / "config"
     tmux_config = config_dir / "tmux.conf"
@@ -207,7 +208,7 @@ bind-key a run-shell "mald ai chat"
     logger.info(f"Created tmux config: {tmux_config}")
 
 
-def _setup_neovim_config(mald_home):
+def _setup_neovim_config(mald_home: Path) -> None:
     """Setup neovim configuration"""
     config_dir = mald_home / "config"
     nvim_dir = config_dir / "nvim"

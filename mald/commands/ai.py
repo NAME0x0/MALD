@@ -2,6 +2,7 @@
 MALD AI command - AI and RAG management
 """
 
+import argparse
 import logging
 import subprocess
 import tempfile
@@ -12,7 +13,7 @@ from ..utils.filesystem import command_exists
 logger = logging.getLogger(__name__)
 
 
-def handle(args):
+def handle(args: argparse.Namespace) -> int:
     """Handle the ai command"""
     if not args.ai_action:
         logger.error("No AI action specified")
@@ -29,7 +30,7 @@ def handle(args):
         return 1
 
 
-def _setup_ai():
+def _setup_ai() -> int:
     """Setup local AI models"""
     logger.info("Setting up local AI models...")
 
@@ -59,7 +60,7 @@ def _setup_ai():
     return 0
 
 
-def _setup_ollama():
+def _setup_ollama() -> None:
     """Setup Ollama models"""
     try:
         # Pull a small, fast model for local use
@@ -82,7 +83,7 @@ def _setup_ollama():
         logger.error(f"Failed to setup Ollama models: {e}")
 
 
-def _install_ollama():
+def _install_ollama() -> None:
     """Install Ollama"""
     tmp_path = None
     try:
@@ -130,7 +131,7 @@ def _install_ollama():
             Path(tmp_path).unlink(missing_ok=True)
 
 
-def _start_chat():
+def _start_chat() -> int:
     """Start AI chat session"""
     logger.info("Starting AI chat session...")
 
@@ -163,7 +164,7 @@ def _start_chat():
         return 1
 
 
-def _index_kb(kb_name):
+def _index_kb(kb_name: str) -> int:
     """Index knowledge base for RAG"""
     logger.info(f"Indexing knowledge base: {kb_name}")
 
