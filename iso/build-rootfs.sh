@@ -75,13 +75,19 @@ install_packages() {
     mkdir -p "${BOOTSTRAP_DIR}/rootfs"
     mount --bind "${ROOTFS_DIR}" "${BOOTSTRAP_DIR}/rootfs"
 
+    # Use a cachedir inside the bootstrap (not inside the bind-mounted rootfs)
+    # to avoid pacman's "could not determine cachedir mount point" error.
+    mkdir -p "${BOOTSTRAP_DIR}/var/cache/pacman/pkg"
+
     # Core packages; kernel/firmware skipped when MALD_NO_KERNEL=1 (e.g. WSL, CI)
     local kernel_pkgs=""
     if [[ "${MALD_NO_KERNEL:-0}" != "1" ]]; then
         kernel_pkgs="linux linux-firmware"
     fi
 
-    chroot "${BOOTSTRAP_DIR}" pacman -r /rootfs -Sy --noconfirm \
+    chroot "${BOOTSTRAP_DIR}" pacman -r /rootfs \
+        --cachedir /var/cache/pacman/pkg \
+        -Sy --noconfirm \
         base ${kernel_pkgs} \
         neovim tmux fzf ripgrep fd \
         btrfs-progs \
@@ -175,6 +181,11 @@ main() {
     mount_bootstrap
     configure_pacman
     install_packages
+
+    # Free disk: remove bootstrap package cache and downloaded tarball
+    rm -rf "${BOOTSTRAP_DIR}/var/cache/pacman/pkg"/*
+    rm -f "${BUILD_DIR}/archlinux-bootstrap-x86_64.tar.zst"
+
     configure_rootfs
 
     echo "Rootfs ready at: ${ROOTFS_DIR}"
