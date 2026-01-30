@@ -79,6 +79,17 @@ install_packages() {
     mkdir -p "${BOOTSTRAP_DIR}/rootfs"
     mount --bind "${ROOTFS_DIR}" "${BOOTSTRAP_DIR}/rootfs"
 
+    # Mount dev/proc/sys into rootfs inside bootstrap so pacman post-install
+    # hooks (mkinitcpio, systemd-tmpfiles, etc.) can run properly.
+    mkdir -p "${BOOTSTRAP_DIR}/rootfs/dev" \
+             "${BOOTSTRAP_DIR}/rootfs/proc" \
+             "${BOOTSTRAP_DIR}/rootfs/sys" \
+             "${BOOTSTRAP_DIR}/rootfs/tmp"
+    mount --bind /dev  "${BOOTSTRAP_DIR}/rootfs/dev"
+    mount --bind /proc "${BOOTSTRAP_DIR}/rootfs/proc"
+    mount --bind /sys  "${BOOTSTRAP_DIR}/rootfs/sys"
+    mount -t tmpfs tmpfs "${BOOTSTRAP_DIR}/rootfs/tmp"
+
     # Core packages; kernel/firmware skipped when MALD_NO_KERNEL=1 (e.g. WSL, CI)
     local kernel_pkgs=""
     if [[ "${MALD_NO_KERNEL:-0}" != "1" ]]; then
@@ -92,6 +103,12 @@ install_packages() {
         python python-pip python-yaml \
         git curl wget openssh \
         base-devel nodejs npm
+
+    # Unmount rootfs virtual filesystems (configure_rootfs will re-mount on ROOTFS_DIR)
+    umount -l "${BOOTSTRAP_DIR}/rootfs/tmp"  2>/dev/null || true
+    umount -l "${BOOTSTRAP_DIR}/rootfs/sys"  2>/dev/null || true
+    umount -l "${BOOTSTRAP_DIR}/rootfs/proc" 2>/dev/null || true
+    umount -l "${BOOTSTRAP_DIR}/rootfs/dev"  2>/dev/null || true
 }
 
 # Configure the rootfs via chroot
@@ -113,6 +130,13 @@ configure_rootfs() {
         echo "LANG=en_US.UTF-8" > /etc/locale.conf
         ln -sf /usr/share/zoneinfo/UTC /etc/localtime
     '
+
+    # Regenerate initramfs if missing (pacman post-install hooks may fail in -r mode)
+    if [[ -f "${ROOTFS_DIR}/boot/vmlinuz-linux" ]] && \
+       [[ ! -f "${ROOTFS_DIR}/boot/initramfs-linux.img" ]]; then
+        echo "Regenerating initramfs..."
+        chroot "${ROOTFS_DIR}" mkinitcpio -P
+    fi
 
     # Create mald user
     chroot "${ROOTFS_DIR}" useradd -m -G wheel -s /bin/bash mald
@@ -165,7 +189,11 @@ PROFILE_EOF
 
 # Cleanup bootstrap
 cleanup_bootstrap() {
-    umount -l "${BOOTSTRAP_DIR}/rootfs" 2>/dev/null || true
+    umount -l "${BOOTSTRAP_DIR}/rootfs/tmp"  2>/dev/null || true
+    umount -l "${BOOTSTRAP_DIR}/rootfs/sys"  2>/dev/null || true
+    umount -l "${BOOTSTRAP_DIR}/rootfs/proc" 2>/dev/null || true
+    umount -l "${BOOTSTRAP_DIR}/rootfs/dev"  2>/dev/null || true
+    umount -l "${BOOTSTRAP_DIR}/rootfs"      2>/dev/null || true
     umount_bootstrap
 }
 
