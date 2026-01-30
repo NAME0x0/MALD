@@ -71,6 +71,10 @@ install_packages() {
     rm -rf "${ROOTFS_DIR}"
     mkdir -p "${ROOTFS_DIR}/var/lib/pacman"
 
+    # Bind-mount rootfs into bootstrap so pacman can access it at /rootfs
+    mkdir -p "${BOOTSTRAP_DIR}/rootfs"
+    mount --bind "${ROOTFS_DIR}" "${BOOTSTRAP_DIR}/rootfs"
+
     chroot "${BOOTSTRAP_DIR}" pacman -r /rootfs -Sy --noconfirm \
         base linux linux-firmware \
         neovim tmux fzf ripgrep fd \
@@ -78,10 +82,6 @@ install_packages() {
         python python-pip python-yaml \
         git curl wget openssh \
         base-devel nodejs npm
-
-    # Bind-mount rootfs into bootstrap so we can access it
-    mkdir -p "${BOOTSTRAP_DIR}/rootfs"
-    mount --bind "${ROOTFS_DIR}" "${BOOTSTRAP_DIR}/rootfs"
 }
 
 # Configure the rootfs via chroot
