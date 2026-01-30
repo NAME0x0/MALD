@@ -60,6 +60,10 @@ configure_pacman() {
     echo "Server = ${ARCH_MIRROR}/\$repo/os/\$arch" \
         > "${BOOTSTRAP_DIR}/etc/pacman.d/mirrorlist"
 
+    # Disable CheckSpace — statvfs() fails inside chroot/bind-mount environments
+    # (causes "could not determine cachedir mount point" errors)
+    sed -i 's/^CheckSpace/#CheckSpace/' "${BOOTSTRAP_DIR}/etc/pacman.conf"
+
     # Initialize keyring
     chroot "${BOOTSTRAP_DIR}" pacman-key --init
     chroot "${BOOTSTRAP_DIR}" pacman-key --populate archlinux
@@ -75,19 +79,13 @@ install_packages() {
     mkdir -p "${BOOTSTRAP_DIR}/rootfs"
     mount --bind "${ROOTFS_DIR}" "${BOOTSTRAP_DIR}/rootfs"
 
-    # Use a cachedir inside the bootstrap (not inside the bind-mounted rootfs)
-    # to avoid pacman's "could not determine cachedir mount point" error.
-    mkdir -p "${BOOTSTRAP_DIR}/var/cache/pacman/pkg"
-
     # Core packages; kernel/firmware skipped when MALD_NO_KERNEL=1 (e.g. WSL, CI)
     local kernel_pkgs=""
     if [[ "${MALD_NO_KERNEL:-0}" != "1" ]]; then
         kernel_pkgs="linux linux-firmware"
     fi
 
-    chroot "${BOOTSTRAP_DIR}" pacman -r /rootfs \
-        --cachedir /var/cache/pacman/pkg \
-        -Sy --noconfirm \
+    chroot "${BOOTSTRAP_DIR}" pacman -r /rootfs -Sy --noconfirm \
         base ${kernel_pkgs} \
         neovim tmux fzf ripgrep fd \
         btrfs-progs \
