@@ -8,116 +8,75 @@ on:
     branches: [main]
 
 jobs:
-  lint:
+  fmt:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          python-version: "3.12"
-          cache: pip
-      - run: pip install -e ".[dev]"
-      - run: python -m flake8 mald/ tests/
-      - run: python -m black --check mald/ tests/
+          components: rustfmt
+      - run: cargo fmt --check
 
-  typecheck:
+  clippy:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          python-version: "3.12"
-          cache: pip
-      - run: pip install -e ".[dev]"
-      - run: python -m mypy mald/
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo clippy -- -D warnings
 
   test:
     runs-on: ${{ matrix.os }}
-    needs: lint
+    needs: [fmt, clippy]
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest]
-        python-version: ["3.9", "3.10", "3.12"]
+        os: [ubuntu-latest, windows-latest, macos-latest]
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python-version }}
-          cache: pip
-      - run: pip install -e ".[dev]"
-      - run: python -m pytest tests/ --cov=mald --cov-report=xml
-      - uses: codecov/codecov-action@v4
-        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12'
-        with:
-          files: coverage.xml
-        env:
-          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test
 
   build:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     needs: test
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            artifact: mald
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact: mald.exe
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            artifact: mald
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            artifact: mald
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          python-version: "3.12"
-          cache: pip
-      - run: pip install build
-      - run: python -m build
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --release --target ${{ matrix.target }}
+      - name: Rename artifact
+        shell: bash
+        run: |
+          mkdir -p dist
+          cp target/${{ matrix.target }}/release/${{ matrix.artifact }} dist/mald-${{ matrix.target }}${{ matrix.target == 'x86_64-pc-windows-msvc' && '.exe' || '' }}
       - uses: actions/upload-artifact@v4
         with:
-          name: dist
+          name: mald-${{ matrix.target }}
           path: dist/
-
-  iso:
-    runs-on: ubuntu-latest
-    needs: build
-    steps:
-      - uses: actions/checkout@v4
-      - name: Free disk space
-        run: |
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
-            /usr/local/share/boost /usr/share/swift /opt/hostedtoolcache \
-            /usr/local/graalvm /usr/local/.ghcup
-          sudo docker image prune --all --force || true
-          sudo apt-get clean
-          df -h
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y xorriso grub-pc-bin grub-common mtools squashfs-tools zstd
-      - name: Build ISO
-        run: sudo bash iso/build.sh
-      - uses: actions/upload-artifact@v4
-        with:
-          name: mald-iso
-          path: output/*.iso
-
-  wsl:
-    runs-on: ubuntu-latest
-    needs: build
-    steps:
-      - uses: actions/checkout@v4
-      - name: Free disk space
-        run: |
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
-            /usr/local/share/boost /usr/share/swift /opt/hostedtoolcache \
-            /usr/local/graalvm /usr/local/.ghcup
-          sudo docker image prune --all --force || true
-          sudo apt-get clean
-          df -h
-      - name: Install dependencies
-        run: sudo apt-get update && sudo apt-get install -y zstd
-      - name: Build WSL tarball
-        run: sudo bash iso/build-wsl.sh
-      - uses: actions/upload-artifact@v4
-        with:
-          name: mald-wsl
-          path: output/*.tar.gz
 
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [iso, wsl]
+    needs: build
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -125,15 +84,14 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
-          name: mald-iso
-          path: mald-iso
-      - uses: actions/download-artifact@v4
-        with:
-          name: mald-wsl
-          path: mald-wsl
+          path: artifacts
+          merge-multiple: true
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "$GITHUB_REF_NAME" --generate-notes \
-            mald-iso/*.iso mald-wsl/*.tar.gz
+            artifacts/mald-x86_64-unknown-linux-gnu \
+            artifacts/mald-x86_64-pc-windows-msvc.exe \
+            artifacts/mald-x86_64-apple-darwin \
+            artifacts/mald-aarch64-apple-darwin
