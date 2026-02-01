@@ -11,11 +11,13 @@ pub async fn run(topic: &str) -> Result<()> {
         "plugins" => PLUGIN_HELP,
         "graph" => GRAPH_HELP,
         "tasks" => TASK_HELP,
+        "shortcuts" | "aliases" | "convenience" => SHORTCUTS_HELP,
         _ => {
             println!("Unknown topic: '{}'\n", topic);
             println!("Available topics:");
             println!("  ai         — AI chat, RAG, summarize, quiz, models");
             println!("  search     — FTS, semantic search, date filtering");
+            println!("  shortcuts  — Shell aliases, fzf integration, neovim plugin");
             println!("  sync       — Git-based version history and remote sync");
             println!("  templates  — Note templates with variables");
             println!("  daemon     — Background indexer and file watcher");
@@ -256,3 +258,74 @@ SYNTAX:
 
 Tasks are plain markdown. Edit them in any editor.
 MALD just reads and aggregates — it never modifies your task checkboxes.";
+
+const SHORTCUTS_HELP: &str = "\
+Shortcuts, Aliases & Integrations
+
+SHELL ALIASES (add to ~/.bashrc or ~/.zshrc):
+
+  alias q='mald q'
+  alias s='mald find'
+  alias n='mald new'
+  alias t='mald today'
+
+  Now: q buy groceries
+       s meeting notes
+       t
+       n \"Project Plan\"
+
+SINGLE-COMMAND SEARCH-AND-OPEN:
+
+  mald find query        Search → select → open in $EDITOR
+  mald find              Interactive (uses fzf if available)
+  mald f query           Short alias
+
+  If fzf is installed, `mald find` pipes results through it with
+  a preview pane. If not, falls back to the built-in TUI.
+
+UNQUOTED CAPTURE:
+
+  mald q buy groceries                 No quotes needed
+  mald q --tag work fix the auth bug   Flags before text
+
+FZF INTEGRATION (manual pipelines):
+
+  # Search and open with fzf
+  mald search \"query\" --json | jq -r '.[].path' | fzf --preview 'head -30 {}' | xargs $EDITOR
+
+  # Tasks in fzf
+  mald tasks --json | jq -r '.[] | \"\\(.kb)/\\(.note): \\(.task)\"' | fzf
+
+  # Tags
+  mald tags --json | jq -r 'keys[]' | fzf
+
+JSON OUTPUT (for scripts):
+
+  mald search \"query\" --json     Structured search results
+  mald tasks --json               Task objects with note/kb/task fields
+  mald tags --json                Tag counts and note lists
+  mald kb list --json             KB metadata (name, path, note count)
+
+NEOVIM PLUGIN:
+
+  A telescope-based plugin ships in contrib/mald.nvim:
+
+  :MaldSearch [query]     Search notes (telescope or vim.ui.select)
+  :MaldCapture text       Quick capture to daily note
+  :MaldToday              Open today's daily note
+  :MaldTasks              Open tasks in quickfix list
+  :MaldLinks              Outgoing links from current file
+  :MaldBacklinks          Backlinks to current file
+
+  Install: add { dir = 'path/to/MALD/contrib/mald.nvim' } to lazy.nvim
+  Setup:   require('mald').setup()
+
+CAPTURE API (mobile/automation):
+
+  mald serve starts a local server with POST /api/capture:
+
+  curl -X POST http://127.0.0.1:3131/api/capture \\
+    -H 'Content-Type: application/json' \\
+    -d '{\"text\": \"Idea from phone\", \"tag\": \"inbox\"}'
+
+  Works with iOS Shortcuts, Android Tasker, or any HTTP client.";

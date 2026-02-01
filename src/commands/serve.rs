@@ -262,9 +262,9 @@ fn extract_title_from_file(path: &std::path::Path) -> Option<String> {
 
 fn extract_title_from_content(content: &str) -> Option<String> {
     let trimmed = content.trim_start();
-    if trimmed.starts_with("---") {
-        if let Some(end) = trimmed[3..].find("\n---") {
-            let yaml = &trimmed[3..3 + end];
+    if let Some(after_prefix) = trimmed.strip_prefix("---") {
+        if let Some(end) = after_prefix.find("\n---") {
+            let yaml = &after_prefix[..end];
             for line in yaml.lines() {
                 if let Some(rest) = line.trim().strip_prefix("title:") {
                     let t = rest.trim().to_string();

@@ -16,7 +16,10 @@ pub async fn run(query: &str, kb: Option<&str>) -> Result<()> {
 
     let kb_path = mald_home().join("kb").join(&kb_name);
     if !kb_path.exists() {
-        bail!("Knowledge base '{}' not found", kb_name);
+        return Err(crate::errors::bail_ctx(
+            format!("Knowledge base '{}' not found", kb_name),
+            format!("Create it with: `mald kb create {}`", kb_name),
+        ));
     }
 
     let files = crate::fs::find_files(&kb_path, "md")?;
@@ -53,7 +56,10 @@ pub async fn run(query: &str, kb: Option<&str>) -> Result<()> {
     matches.sort_by_key(|(score, _)| *score);
 
     if matches.is_empty() {
-        bail!("No notes matching '{}' in kb '{}'", query, kb_name);
+        return Err(crate::errors::bail_ctx(
+            format!("No notes matching '{}' in kb '{}'", query, kb_name),
+            "Create a new note with: `mald new \"Title\"`",
+        ));
     }
 
     let path = if matches.len() == 1 || matches[0].0 == 0 {

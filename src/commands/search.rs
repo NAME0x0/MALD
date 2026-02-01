@@ -28,7 +28,7 @@ pub async fn run(query: &str, k: usize, since: Option<&str>, json: bool) -> Resu
     let meta = MetadataStore::open(&meta_path)?;
 
     // Resolve since to ISO date string
-    let since_date = since.map(|s| parse_since(s));
+    let since_date = since.map(parse_since);
 
     // Try vector search if no date filter and Ollama available
     if since_date.is_none() {

@@ -152,7 +152,7 @@ pub async fn view(kb: Option<&str>) -> Result<()> {
             println!("    {}[{}]", id, name);
         }
         for link in doc.all_links() {
-            let link_id = mermaid_id(&link);
+            let link_id = mermaid_id(link);
             // Check if target exists
             let exists = docs.iter().any(|d| {
                 d.path

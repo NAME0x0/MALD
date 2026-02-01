@@ -2,10 +2,21 @@ use clap::{CommandFactory, Parser, Subcommand};
 use clap_complete::{generate, Shell};
 
 #[derive(Parser)]
-#[command(name = "mald", about = "Markdown Archive & Localized Daemon")]
+#[command(
+    name = "mald",
+    about = "Markdown Archive & Localized Daemon — terminal-first PKM",
+    after_help = "Run `mald` with no args to open today's daily note.\n\
+                  Run `mald hub` for the interactive TUI.\n\
+                  Run `mald <text>` to search and open a note.\n\n\
+                  Shortcuts: q=capture, f=find, e=edit, s=search, n=new, t=today",
+)]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Option<Command>,
+
+    /// Free-form text treated as a search query when no subcommand matches
+    #[arg(trailing_var_arg = true, allow_hyphen_values = true, hide = true)]
+    pub args: Vec<String>,
 }
 
 #[derive(Subcommand)]
@@ -19,7 +30,10 @@ pub enum Command {
     Init,
 
     /// Create a new note
-    #[command(after_help = "Examples:\n  mald new \"Meeting Notes\"\n  mald new \"API Design\" --kb work\n  mald new \"Standup\" --template meeting")]
+    #[command(
+        alias = "n",
+        after_help = "Examples:\n  mald new \"Meeting Notes\"\n  mald new \"API Design\" --kb work\n  mald new \"Standup\" --template meeting"
+    )]
     New {
         title: String,
         #[arg(short, long)]
@@ -29,24 +43,46 @@ pub enum Command {
     },
 
     /// Open today's daily note
-    #[command(after_help = "Examples:\n  mald today\n  mald today --kb work")]
+    #[command(
+        alias = "t",
+        after_help = "Examples:\n  mald today\n  mald today --kb work"
+    )]
     Today {
         #[arg(short, long)]
         kb: Option<String>,
     },
 
-    /// Quick capture to daily note (no editor opens)
-    #[command(alias = "q", after_help = "Examples:\n  mald q \"Buy groceries\"\n  mald q \"Fix auth bug\" --tag work\n  mald capture \"Read chapter 5\" --kb study")]
+    /// Quick capture to daily note (no quotes needed)
+    #[command(
+        alias = "q",
+        after_help = "Examples:\n  mald q buy groceries\n  mald q --tag work fix the auth bug\n  mald q --kb study read chapter 5\n\nNote: flags (--tag, --kb) must come before the text."
+    )]
     Capture {
-        text: String,
+        #[arg(trailing_var_arg = true, required = true)]
+        text: Vec<String>,
         #[arg(short, long)]
         kb: Option<String>,
         #[arg(short, long)]
         tag: Option<String>,
     },
 
+    /// Search and open in one step (uses fzf if available)
+    #[command(
+        alias = "f",
+        after_help = "Examples:\n  mald find rust async\n  mald f meeting\n  mald find              # interactive (fzf or TUI)"
+    )]
+    Find {
+        #[arg(trailing_var_arg = true)]
+        query: Vec<String>,
+        #[arg(short, long)]
+        kb: Option<String>,
+    },
+
     /// Fuzzy-find and open a note in your editor
-    #[command(alias = "e", after_help = "Examples:\n  mald edit rust\n  mald e meeting\n  mald edit api --kb work")]
+    #[command(
+        alias = "e",
+        after_help = "Examples:\n  mald edit rust\n  mald e meeting\n  mald edit api --kb work"
+    )]
     Edit {
         query: String,
         #[arg(short, long)]
@@ -84,15 +120,16 @@ pub enum Command {
     },
 
     /// Search notes (all KBs, no args = interactive TUI)
-    #[command(after_help = "Examples:\n  mald search \"rust async\"\n  mald search \"meeting\" --since 7d\n  mald search --json     # JSON output for scripts\n  mald search            # opens interactive TUI")]
+    #[command(
+        alias = "s",
+        after_help = "Examples:\n  mald search \"rust async\"\n  mald search \"meeting\" --since 7d\n  mald search --json     # JSON output for scripts\n  mald search            # opens interactive TUI"
+    )]
     Search {
         query: Option<String>,
         #[arg(short, long, default_value = "10")]
         k: usize,
-        /// Filter by date (YYYY-MM-DD or Nd for last N days)
         #[arg(long)]
         since: Option<String>,
-        /// Output as JSON (for scripts and integrations)
         #[arg(long)]
         json: bool,
     },
@@ -125,7 +162,6 @@ pub enum Command {
         tag: Option<String>,
         #[arg(short, long)]
         kb: Option<String>,
-        /// Output as JSON
         #[arg(long)]
         json: bool,
     },
@@ -135,10 +171,8 @@ pub enum Command {
     Tasks {
         #[arg(short, long)]
         kb: Option<String>,
-        /// Search across all KBs
         #[arg(short, long)]
         all: bool,
-        /// Output as JSON
         #[arg(long)]
         json: bool,
     },
@@ -299,6 +333,35 @@ pub enum Command {
         #[arg(trailing_var_arg = true)]
         args: Vec<String>,
     },
+
+    /// Check for updates and self-update
+    #[command(after_help = "Examples:\n  mald update")]
+    Update,
+
+    /// Show text dashboard (non-interactive)
+    #[command(after_help = "Examples:\n  mald status")]
+    Status,
+
+    /// Open the interactive TUI hub
+    #[command(
+        alias = "h",
+        after_help = "Examples:\n  mald hub"
+    )]
+    Hub,
+
+    /// Scan and fix broken wikilinks
+    #[command(
+        name = "fix-links",
+        after_help = "Examples:\n  mald fix-links          # show broken links\n  mald fix-links --fix    # auto-fix high-confidence matches"
+    )]
+    FixLinks {
+        #[arg(short, long)]
+        kb: Option<String>,
+        /// Auto-fix high-confidence matches
+        #[arg(long)]
+        fix: bool,
+    },
+
 }
 
 #[derive(Subcommand)]
@@ -308,7 +371,6 @@ pub enum KbAction {
     Create { name: String },
     /// List all knowledge bases
     List {
-        /// Output as JSON
         #[arg(long)]
         json: bool,
     },
@@ -423,6 +485,9 @@ pub enum AiAction {
         #[arg(short, long)]
         kb: Option<String>,
     },
+    /// Auto-install and configure Ollama for AI features
+    #[command(after_help = "Examples:\n  mald ai setup")]
+    Setup,
     /// List chat sessions
     History,
     /// List available Ollama models
@@ -461,8 +526,25 @@ pub enum PluginAction {
 }
 
 pub async fn run(cli: Cli) -> anyhow::Result<()> {
+    let free_args = cli.args;
     match cli.command {
-        None => crate::commands::dashboard::run().await,
+        // No args: open today's note (muscle memory — fastest path)
+        None => {
+            if !free_args.is_empty() {
+                // Free-form text: smart search → open
+                crate::commands::find::run(free_args, None).await
+            } else if !crate::fs::mald_home().exists() {
+                crate::commands::wizard::run().await
+            } else if std::io::IsTerminal::is_terminal(&std::io::stdout()) {
+                crate::commands::new::today(None).await
+            } else {
+                // Non-interactive (piped/test): show dashboard
+                crate::commands::dashboard::run().await
+            }
+        }
+
+        Some(Command::Hub) => crate::commands::tui::run_full_tui().await,
+        Some(Command::Status) => crate::commands::dashboard::run().await,
         Some(Command::Setup) => crate::commands::setup::run().await,
         Some(Command::Init) => crate::commands::init::run().await,
         Some(Command::New { title, kb, template }) => {
@@ -474,7 +556,11 @@ pub async fn run(cli: Cli) -> anyhow::Result<()> {
         }
         Some(Command::Today { kb }) => crate::commands::new::today(kb.as_deref()).await,
         Some(Command::Capture { text, kb, tag }) => {
-            crate::commands::capture::run(&text, kb.as_deref(), tag.as_deref()).await
+            let joined = text.join(" ");
+            crate::commands::capture::run(&joined, kb.as_deref(), tag.as_deref()).await
+        }
+        Some(Command::Find { query, kb }) => {
+            crate::commands::find::run(query, kb.as_deref()).await
         }
         Some(Command::Edit { query, kb }) => {
             crate::commands::edit::run(&query, kb.as_deref()).await
@@ -495,7 +581,10 @@ pub async fn run(cli: Cli) -> anyhow::Result<()> {
             Some(q) => crate::commands::search::run(&q, k, since.as_deref(), json).await,
             None => {
                 if json {
-                    anyhow::bail!("--json requires a query. Usage: mald search \"query\" --json")
+                    return Err(crate::errors::bail_ctx(
+                        "--json requires a query",
+                        "Usage: `mald search \"query\" --json`",
+                    ));
                 }
                 crate::commands::search::interactive()
             }
@@ -534,7 +623,10 @@ pub async fn run(cli: Cli) -> anyhow::Result<()> {
             } else if let Some(n) = note {
                 crate::commands::export::run(&n, kb.as_deref(), output.as_deref()).await
             } else {
-                anyhow::bail!("Specify a note name, or use --all to export entire KB.")
+                return Err(crate::errors::bail_ctx(
+                    "Specify a note name, or use --all to export entire KB",
+                    "Examples: `mald export my-note` or `mald export --all`",
+                ));
             }
         }
         Some(Command::Import { source, kb, flatten }) => {
@@ -597,6 +689,7 @@ pub async fn run(cli: Cli) -> anyhow::Result<()> {
             AiAction::Explain { note, kb } => {
                 crate::commands::ai::explain(&note, kb.as_deref()).await
             }
+            AiAction::Setup => crate::commands::ai::setup_ai().await,
             AiAction::History => crate::commands::ai::chat_history().await,
             AiAction::Models => crate::commands::ai::models().await,
             AiAction::Pull { model } => crate::commands::ai::pull(&model).await,
@@ -635,6 +728,10 @@ pub async fn run(cli: Cli) -> anyhow::Result<()> {
         },
         Some(Command::RunPlugin { name, args }) => {
             crate::commands::plugins::run(&name, &args).await
+        }
+        Some(Command::Update) => crate::commands::update::run().await,
+        Some(Command::FixLinks { kb, fix }) => {
+            crate::commands::fix_links::run(kb.as_deref(), fix).await
         }
     }
 }

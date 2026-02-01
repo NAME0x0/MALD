@@ -164,8 +164,8 @@ pub fn collect_open_tasks(kb_dir: &std::path::Path) -> Vec<(String, String)> {
                     .to_string();
                 for line in content.lines() {
                     let trimmed = line.trim();
-                    if trimmed.starts_with("- [ ] ") {
-                        let task_text = trimmed[6..].trim().to_string();
+                    if let Some(rest) = trimmed.strip_prefix("- [ ] ") {
+                        let task_text = rest.trim().to_string();
                         if !task_text.is_empty() {
                             tasks.push((note_name.clone(), task_text));
                         }

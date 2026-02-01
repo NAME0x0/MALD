@@ -3,6 +3,7 @@ mod cli;
 mod commands;
 mod config;
 mod daemon;
+mod errors;
 mod fs;
 mod index;
 mod parser;
@@ -45,6 +46,20 @@ async fn main() -> anyhow::Result<()> {
             .init();
     }
 
+    // Auto-start daemon if MALD is set up (silent, non-blocking)
+    if !is_daemon {
+        commands::daemon::ensure_running();
+    }
+
     let cli = cli::Cli::parse();
-    cli::run(cli).await
+    if let Err(err) = cli::run(cli).await {
+        if let Some(ctx) = errors::extract_contextual(&err) {
+            ctx.print();
+        } else {
+            use crossterm::style::Stylize;
+            eprintln!("{}: {:?}", "error".red().bold(), err);
+        }
+        std::process::exit(1);
+    }
+    Ok(())
 }

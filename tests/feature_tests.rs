@@ -325,6 +325,348 @@ fn test_init_sample_has_tasks() {
         .stdout(predicate::str::contains("Create your first note"));
 }
 
+// --- Unquoted capture tests ---
+
+#[test]
+fn test_capture_unquoted() {
+    let dir = setup_mald_home();
+    mald_cmd()
+        .env("MALD_HOME", dir.path())
+        .arg("q")
+        .arg("buy")
+        .arg("groceries")
+        .arg("tomorrow")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Captured to"));
+}
+
+#[test]
+fn test_capture_unquoted_with_tag() {
+    let dir = setup_mald_home();
+    mald_cmd()
+        .env("MALD_HOME", dir.path())
+        .arg("q")
+        .arg("--tag")
+        .arg("work")
+        .arg("fix")
+        .arg("the")
+        .arg("auth")
+        .arg("bug")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Captured to"));
+}
+
+#[test]
+fn test_capture_quoted_still_works() {
+    let dir = setup_mald_home();
+    mald_cmd()
+        .env("MALD_HOME", dir.path())
+        .arg("q")
+        .arg("this is one quoted string")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Captured to"));
+}
+
+#[test]
+fn test_capture_content_written() {
+    let dir = setup_mald_home();
+    mald_cmd()
+        .env("MALD_HOME", dir.path())
+        .arg("q")
+        .arg("unique-capture-test-string-xyz")
+        .assert()
+        .success();
+
+    // Verify the text ended up in the daily note
+    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+    let daily_path = dir.path().join("kb").join("personal").join(format!("{}.md", today));
+    let content = fs::read_to_string(&daily_path).unwrap();
+    assert!(content.contains("unique-capture-test-string-xyz"));
+}
+
+#[test]
+fn test_capture_with_tag_content() {
+    let dir = setup_mald_home();
+    mald_cmd()
+        .env("MALD_HOME", dir.path())
+        .arg("q")
+        .arg("--tag")
+        .arg("inbox")
+        .arg("tagged-capture-test")
+        .assert()
+        .success();
+
+    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+    let daily_path = dir.path().join("kb").join("personal").join(format!("{}.md", today));
+    let content = fs::read_to_string(&daily_path).unwrap();
+    assert!(content.contains("tagged-capture-test"));
+    assert!(content.contains("#inbox"));
+}
+
+// --- Find command tests ---
+
+#[test]
+fn test_find_single_result_no_editor() {
+    // find with --json doesn't exist, but we can test that it finds things
+    // by checking search --json which find uses internally
+    let dir = setup_mald_home();
+    mald_cmd()
+        .env("MALD_HOME", dir.path())
+        .arg("search")
+        .arg("Getting Started")
+        .arg("--json")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Getting Started"));
+}
+
+#[test]
+fn test_find_no_results() {
+    let dir = setup_mald_home();
+    // find with a query that matches nothing should fail
+    mald_cmd()
+        .env("MALD_HOME", dir.path())
+        .arg("find")
+        .arg("xyznonexistent999")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("No results"));
+}
+
+// --- Help topic shortcuts ---
+
+#[test]
+fn test_help_topic_shortcuts() {
+    mald_cmd()
+        .arg("help-topic")
+        .arg("shortcuts")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("SHELL ALIASES"))
+        .stdout(predicate::str::contains("FZF INTEGRATION"))
+        .stdout(predicate::str::contains("NEOVIM PLUGIN"));
+}
+
+#[test]
+fn test_help_topic_aliases_synonym() {
+    mald_cmd()
+        .arg("help-topic")
+        .arg("aliases")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("SHELL ALIASES"));
+}
+
+// --- JSON output edge cases ---
+
+#[test]
+fn test_search_json_empty_result() {
+    let dir = setup_mald_home();
+    mald_cmd()
+        .env("MALD_HOME", dir.path())
+        .arg("search")
+        .arg("xyznonexistent999")
+        .arg("--json")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("[]"));
+}
+
+#[test]
+fn test_tasks_json_empty_kb() {
+    let dir = TempDir::new().unwrap();
+    // Create minimal MALD home with empty KB
+    fs::create_dir_all(dir.path().join("kb").join("personal")).unwrap();
+    fs::create_dir_all(dir.path().join("config")).unwrap();
+    fs::write(
+        dir.path().join("config").join("config.json"),
+        r#"{"default_kb":"personal"}"#,
+    )
+    .unwrap();
+
+    mald_cmd()
+        .env("MALD_HOME", dir.path())
+        .arg("tasks")
+        .arg("--json")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("[]"));
+}
+
+#[test]
+fn test_tags_json_with_tagged_notes() {
+    let dir = setup_mald_home();
+    // Create a note with specific tags
+    let note_path = dir.path().join("kb").join("personal").join("tagged-note.md");
+    fs::write(
+        &note_path,
+        "# Tagged\n\n#rust #programming some content\n",
+    )
+    .unwrap();
+
+    mald_cmd()
+        .env("MALD_HOME", dir.path())
+        .arg("tags")
+        .arg("--json")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"rust\""))
+        .stdout(predicate::str::contains("\"programming\""));
+}
+
+#[test]
+fn test_tags_filter_json() {
+    let dir = setup_mald_home();
+    // The init sample has #mald tag
+    mald_cmd()
+        .env("MALD_HOME", dir.path())
+        .arg("tags")
+        .arg("mald")
+        .arg("--json")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("["))
+        .stdout(predicate::str::contains("index")); // the sample note stem
+}
+
+#[test]
+fn test_tags_filter_json_no_match() {
+    let dir = setup_mald_home();
+    mald_cmd()
+        .env("MALD_HOME", dir.path())
+        .arg("tags")
+        .arg("nonexistenttag999")
+        .arg("--json")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("[]"));
+}
+
+#[test]
+fn test_kb_list_json_structure() {
+    let dir = setup_mald_home();
+    // Create a second KB
+    mald_cmd()
+        .env("MALD_HOME", dir.path())
+        .arg("kb")
+        .arg("create")
+        .arg("work")
+        .assert()
+        .success();
+
+    let output = mald_cmd()
+        .env("MALD_HOME", dir.path())
+        .arg("kb")
+        .arg("list")
+        .arg("--json")
+        .output()
+        .unwrap();
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let parsed: Vec<serde_json::Value> = serde_json::from_str(&stdout).unwrap();
+    assert!(parsed.len() >= 2);
+
+    // Check that personal is marked as default
+    let personal = parsed.iter().find(|v| v["name"] == "personal").unwrap();
+    assert_eq!(personal["default"], true);
+}
+
+#[test]
+fn test_search_json_valid_json() {
+    let dir = setup_mald_home();
+    let output = mald_cmd()
+        .env("MALD_HOME", dir.path())
+        .arg("search")
+        .arg("getting")
+        .arg("--json")
+        .output()
+        .unwrap();
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let parsed: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    assert!(parsed.is_array());
+    let arr = parsed.as_array().unwrap();
+    assert!(!arr.is_empty());
+    // Each result must have type and path
+    for item in arr {
+        assert!(item.get("type").is_some());
+        assert!(item.get("path").is_some());
+    }
+}
+
+#[test]
+fn test_tasks_json_valid_structure() {
+    let dir = setup_mald_home();
+    let output = mald_cmd()
+        .env("MALD_HOME", dir.path())
+        .arg("tasks")
+        .arg("--json")
+        .output()
+        .unwrap();
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let parsed: Vec<serde_json::Value> = serde_json::from_str(&stdout).unwrap();
+    assert!(!parsed.is_empty());
+    for item in &parsed {
+        assert!(item.get("task").is_some());
+        assert!(item.get("note").is_some());
+        assert!(item.get("kb").is_some());
+        assert_eq!(item["done"], false);
+    }
+}
+
+// --- Multiple captures to same daily note ---
+
+#[test]
+fn test_multiple_captures_append() {
+    let dir = setup_mald_home();
+    mald_cmd()
+        .env("MALD_HOME", dir.path())
+        .arg("q")
+        .arg("first-capture-aaa")
+        .assert()
+        .success();
+
+    mald_cmd()
+        .env("MALD_HOME", dir.path())
+        .arg("q")
+        .arg("second-capture-bbb")
+        .assert()
+        .success();
+
+    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+    let daily_path = dir.path().join("kb").join("personal").join(format!("{}.md", today));
+    let content = fs::read_to_string(&daily_path).unwrap();
+    assert!(content.contains("first-capture-aaa"));
+    assert!(content.contains("second-capture-bbb"));
+}
+
+// --- Find command visible in help ---
+
+#[test]
+fn test_find_in_help() {
+    mald_cmd()
+        .arg("--help")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("find"));
+}
+
+// --- Capture requires at least one word ---
+
+#[test]
+fn test_capture_empty_fails() {
+    let dir = setup_mald_home();
+    mald_cmd()
+        .env("MALD_HOME", dir.path())
+        .arg("q")
+        .assert()
+        .failure();
+}
+
 #[test]
 fn test_ai_chat_no_ollama() {
     let dir = setup_mald_home();
@@ -346,5 +688,5 @@ fn test_ai_chat_no_ollama() {
         .assert()
         .failure()
         .stderr(predicate::str::contains("Cannot connect to Ollama"))
-        .stderr(predicate::str::contains("ollama serve"));
+        .stderr(predicate::str::contains("mald setup ai"));
 }

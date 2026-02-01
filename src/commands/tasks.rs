@@ -62,8 +62,8 @@ pub async fn list(kb: Option<&str>, all_kbs: bool, json: bool) -> Result<()> {
                     .unwrap_or_default();
                 for line in content.lines() {
                     let trimmed = line.trim();
-                    if trimmed.starts_with("- [ ] ") {
-                        let task = trimmed[6..].trim().to_string();
+                    if let Some(rest) = trimmed.strip_prefix("- [ ] ") {
+                        let task = rest.trim().to_string();
                         if !task.is_empty() {
                             kb_tasks.push((note.clone(), task.clone()));
                             if json {

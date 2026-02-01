@@ -107,6 +107,58 @@ impl OllamaClient {
         Ok(())
     }
 
+    /// Pull a model with streaming progress output.
+    pub async fn pull_model_stream(&self, name: &str) -> Result<()> {
+        use futures_util::StreamExt;
+        let req = PullRequest {
+            name: name.to_string(),
+            stream: true,
+        };
+        let resp = self
+            .client
+            .post(format!("{}/api/pull", self.base_url))
+            .json(&req)
+            .send()
+            .await?
+            .error_for_status()
+            .context("Failed to pull model")?;
+
+        let bar = indicatif::ProgressBar::new(0);
+        bar.set_style(
+            indicatif::ProgressStyle::default_bar()
+                .template("  {msg} [{bar:30}] {bytes}/{total_bytes}")
+                .unwrap()
+                .progress_chars("=> "),
+        );
+        bar.set_message(name.to_string());
+
+        let mut stream = resp.bytes_stream();
+        while let Some(chunk) = stream.next().await {
+            let bytes = chunk?;
+            let text = String::from_utf8_lossy(&bytes);
+            for line in text.lines() {
+                if line.is_empty() {
+                    continue;
+                }
+                if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(line) {
+                    if let Some(total) = parsed.get("total").and_then(|v| v.as_u64()) {
+                        bar.set_length(total);
+                    }
+                    if let Some(completed) = parsed.get("completed").and_then(|v| v.as_u64()) {
+                        bar.set_position(completed);
+                    }
+                    if let Some(status) = parsed.get("status").and_then(|v| v.as_str()) {
+                        if status == "success" {
+                            bar.finish_with_message(format!("{} done", name));
+                        }
+                    }
+                }
+            }
+        }
+        bar.finish_and_clear();
+        Ok(())
+    }
+
     pub async fn chat(&self, model: &str, message: &str) -> Result<String> {
         self.chat_with_history(model, &[ChatMessage {
             role: "user".into(),

@@ -97,7 +97,7 @@ fn render_markdown(body: &str) {
                     HeadingLevel::H3 => 3,
                     _ => 4,
                 };
-                print!("\n");
+                println!();
                 let prefix = "#".repeat(_heading_level as usize);
                 print!("\x1b[1;36m{} ", prefix);
             }

@@ -12,9 +12,8 @@ impl EmbeddingBackend {
             .get_string("ai.backend")
             .unwrap_or_else(|| "ollama".into());
 
-        match backend.as_str() {
-            _ => Self::Ollama(super::ollama::OllamaClient::from_config(config)),
-        }
+        let _ = backend; // reserved for future backends
+        Self::Ollama(super::ollama::OllamaClient::from_config(config))
     }
 
     pub async fn embed(&self, text: &str) -> Result<Vec<f32>> {

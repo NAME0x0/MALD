@@ -206,14 +206,11 @@ pub async fn run() -> Result<()> {
     check_warn(
         "Daemon log",
         log_dir.exists(),
-        &format!(
-            "{}",
-            if log_file.exists() {
-                format!("{:.1} KB", log_size as f64 / 1024.0)
-            } else {
-                "no log yet".to_string()
-            }
-        ),
+        &if log_file.exists() {
+            format!("{:.1} KB", log_size as f64 / 1024.0)
+        } else {
+            "no log yet".to_string()
+        },
         "Logs created when daemon runs",
         &mut warnings,
     );
@@ -229,15 +226,16 @@ pub async fn run() -> Result<()> {
     );
 
     // Summary
+    use crossterm::style::Stylize;
     println!("\n─────────────────────────");
     if issues == 0 && warnings == 0 {
-        println!("All checks passed.");
+        println!("{}", "All checks passed.".green().bold());
     } else {
         if issues > 0 {
-            println!("{} issue(s) found.", issues);
+            println!("{}", format!("{} issue(s) found.", issues).red().bold());
         }
         if warnings > 0 {
-            println!("{} warning(s).", warnings);
+            println!("{}", format!("{} warning(s).", warnings).yellow());
         }
     }
 
@@ -245,19 +243,21 @@ pub async fn run() -> Result<()> {
 }
 
 fn check(name: &str, ok: bool, detail: &str, fix: &str, issues: &mut u32) {
+    use crossterm::style::Stylize;
     if ok {
-        println!("  [ok]   {} — {}", name, detail);
+        println!("  {} {} — {}", "[ok]".green().bold(), name, detail);
     } else {
-        println!("  [FAIL] {} — {}", name, fix);
+        println!("  {} {} — {}", "[FAIL]".red().bold(), name, fix.yellow());
         *issues += 1;
     }
 }
 
 fn check_warn(name: &str, ok: bool, detail: &str, fix: &str, warnings: &mut u32) {
+    use crossterm::style::Stylize;
     if ok {
-        println!("  [ok]   {} — {}", name, detail);
+        println!("  {} {} — {}", "[ok]".green().bold(), name, detail);
     } else {
-        println!("  [warn] {} — {}", name, fix);
+        println!("  {} {} — {}", "[warn]".yellow().bold(), name, fix.dark_grey());
         *warnings += 1;
     }
 }

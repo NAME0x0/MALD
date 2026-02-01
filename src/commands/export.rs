@@ -133,9 +133,9 @@ fn strip_frontmatter(content: &str) -> String {
 
 fn extract_title(content: &str, fallback: &str) -> String {
     let trimmed = content.trim_start();
-    if trimmed.starts_with("---") {
-        if let Some(end) = trimmed[3..].find("\n---") {
-            let yaml = &trimmed[3..3 + end];
+    if let Some(after_prefix) = trimmed.strip_prefix("---") {
+        if let Some(end) = after_prefix.find("\n---") {
+            let yaml = &after_prefix[..end];
             for line in yaml.lines() {
                 let line = line.trim();
                 if let Some(rest) = line.strip_prefix("title:") {

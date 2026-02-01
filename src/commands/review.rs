@@ -62,8 +62,8 @@ pub async fn run(kb: Option<&str>, days: u64) -> Result<()> {
             total_words += content.split_whitespace().count();
             for line in content.lines() {
                 let trimmed = line.trim();
-                if trimmed.starts_with("- [ ] ") {
-                    let task = trimmed[6..].trim().to_string();
+                if let Some(rest) = trimmed.strip_prefix("- [ ] ") {
+                    let task = rest.trim().to_string();
                     if !task.is_empty() {
                         open_tasks.push((name.clone(), task));
                     }

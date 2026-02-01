@@ -3,6 +3,7 @@ pub mod cli;
 pub mod commands;
 pub mod config;
 pub mod daemon;
+pub mod errors;
 pub mod fs;
 pub mod index;
 pub mod parser;

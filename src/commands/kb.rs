@@ -81,7 +81,10 @@ pub async fn list(json: bool) -> Result<()> {
 pub async fn open(name: &str) -> Result<()> {
     let kb_path = mald_home().join("kb").join(name);
     if !kb_path.exists() {
-        bail!("Knowledge base '{}' not found", name);
+        return Err(crate::errors::bail_ctx(
+            format!("Knowledge base '{}' not found", name),
+            "Run `mald kb list` to see available knowledge bases",
+        ));
     }
 
     let config_path = mald_home().join("config").join("config.json");

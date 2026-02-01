@@ -78,7 +78,32 @@ pub async fn status() -> Result<()> {
     Ok(())
 }
 
-fn is_running() -> bool {
+/// Ensure the daemon is running. Starts it silently if not.
+/// Called automatically from main before dispatching commands.
+pub fn ensure_running() {
+    let home = mald_home();
+    if !home.exists() || !home.join("config").join("config.json").exists() {
+        return;
+    }
+    if is_running() {
+        return;
+    }
+    // Silently spawn daemon in background
+    if let Ok(exe) = std::env::current_exe() {
+        let _ = std::process::Command::new(exe)
+            .arg("daemon")
+            .arg("_run")
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .map(|child| {
+                let _ = std::fs::write(pid_file(), child.id().to_string());
+            });
+    }
+}
+
+pub fn is_running() -> bool {
     let pid_path = pid_file();
     if !pid_path.exists() {
         return false;

@@ -30,7 +30,18 @@ impl MarkdownDocument {
         let title = Self::extract_title(&body, &metadata);
         let wikilinks = links::extract_wikilinks(&body);
         let markdown_links = links::extract_markdown_links(&body);
-        let tags_list = tags::extract_tags(&body);
+        let mut tags_list = tags::extract_tags(&body);
+        // Also include tags from frontmatter `tags: [...]`
+        if let Some(fm_tags) = metadata.get("tags").and_then(|v| v.as_sequence()) {
+            for t in fm_tags {
+                if let Some(s) = t.as_str() {
+                    let s = s.to_string();
+                    if !tags_list.contains(&s) {
+                        tags_list.push(s);
+                    }
+                }
+            }
+        }
         let code_blocks = Self::extract_code_blocks(&body);
         let headings = Self::extract_headings(&body);
 
