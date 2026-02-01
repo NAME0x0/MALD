@@ -27,7 +27,7 @@ pub async fn run() -> Result<()> {
     }
 
     let count = crate::daemon::indexer::fts_index_kb(&kb_dir)?;
-    println!("Rebuilt FTS index: {} files indexed.", count);
+    println!("Rebuilt FTS index: {count} files indexed.");
     println!("\nTo rebuild vector index, run: mald ai index <kb>");
 
     Ok(())

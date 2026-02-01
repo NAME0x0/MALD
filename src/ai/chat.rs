@@ -123,16 +123,14 @@ pub async fn chat_with_rag(
 
     let system_prompt = if context.is_empty() {
         format!(
-            "You are a helpful assistant for the knowledge base '{}'. \
-             Answer questions directly and concisely.",
-            kb_name
+            "You are a helpful assistant for the knowledge base '{kb_name}'. \
+             Answer questions directly and concisely."
         )
     } else {
         format!(
-            "You are a helpful assistant for the knowledge base '{}'. \
+            "You are a helpful assistant for the knowledge base '{kb_name}'. \
              Answer using ONLY the following sources. Cite sources using [1], [2], etc. \
-             If the sources don't contain the answer, say so.\n\n{}",
-            kb_name, context
+             If the sources don't contain the answer, say so.\n\n{context}"
         )
     };
 
@@ -209,21 +207,20 @@ pub async fn quiz(
 
     let mut context = String::new();
     for (title, content) in note_contents {
-        context.push_str(&format!("--- {} ---\n{}\n\n", title, content));
+        context.push_str(&format!("--- {title} ---\n{content}\n\n"));
     }
 
     let messages = vec![
         ChatMessage {
             role: "system".into(),
             content: format!(
-                "Generate exactly {} quiz questions based on the following documents. \
+                "Generate exactly {count} quiz questions based on the following documents. \
                  For each question:\n\
                  1. Write the question\n\
                  2. Provide 4 multiple choice options (A-D)\n\
                  3. Mark the correct answer\n\
                  4. Give a brief explanation\n\
-                 Format clearly with numbered questions.",
-                count
+                 Format clearly with numbered questions."
             ),
         },
         ChatMessage {
@@ -247,7 +244,7 @@ pub async fn briefing(
 
     let mut context = String::new();
     for (title, content) in note_contents {
-        context.push_str(&format!("--- {} ---\n{}\n\n", title, content));
+        context.push_str(&format!("--- {title} ---\n{content}\n\n"));
     }
 
     let messages = vec![
@@ -322,7 +319,7 @@ pub async fn timeline(
 
     let mut context = String::new();
     for (title, content) in note_contents {
-        context.push_str(&format!("--- {} ---\n{}\n\n", title, content));
+        context.push_str(&format!("--- {title} ---\n{content}\n\n"));
     }
 
     let messages = vec![
@@ -364,7 +361,7 @@ pub async fn explain(
         },
         ChatMessage {
             role: "user".into(),
-            content: format!("Title: {}\n\n{}", title, content),
+            content: format!("Title: {title}\n\n{content}"),
         },
     ];
 

@@ -17,7 +17,7 @@ struct GithubAsset {
 }
 
 pub async fn run() -> Result<()> {
-    println!("Current version: {}", CURRENT_VERSION);
+    println!("Current version: {CURRENT_VERSION}");
     println!("Checking for updates...");
 
     let client = reqwest::Client::builder()
@@ -26,8 +26,7 @@ pub async fn run() -> Result<()> {
 
     let release: GithubRelease = client
         .get(format!(
-            "https://api.github.com/repos/{}/releases/latest",
-            REPO
+            "https://api.github.com/repos/{REPO}/releases/latest"
         ))
         .send()
         .await?
@@ -44,11 +43,11 @@ pub async fn run() -> Result<()> {
     let latest = release.tag_name.trim_start_matches('v');
 
     if !is_newer(latest, CURRENT_VERSION) {
-        println!("You are on the latest version ({}).", CURRENT_VERSION);
+        println!("You are on the latest version ({CURRENT_VERSION}).");
         return Ok(());
     }
 
-    println!("New version available: {} -> {}", CURRENT_VERSION, latest);
+    println!("New version available: {CURRENT_VERSION} -> {latest}");
     println!("Release: {}\n", release.html_url);
 
     let binary_name = get_binary_name();
@@ -70,7 +69,7 @@ pub async fn run() -> Result<()> {
 
             // Backup current binary
             if let Err(e) = std::fs::rename(&current_exe, &backup) {
-                println!("Warning: could not create backup: {}", e);
+                println!("Warning: could not create backup: {e}");
             }
 
             // Write new binary
@@ -78,7 +77,7 @@ pub async fn run() -> Result<()> {
                 // Try to restore backup
                 let _ = std::fs::rename(&backup, &current_exe);
                 return Err(crate::errors::bail_ctx(
-                    format!("Failed to write new binary: {}", e),
+                    format!("Failed to write new binary: {e}"),
                     "Try downloading manually from the release page",
                 ));
             }
@@ -94,10 +93,10 @@ pub async fn run() -> Result<()> {
             // Clean up backup
             let _ = std::fs::remove_file(&backup);
 
-            println!("Updated to version {}.", latest);
+            println!("Updated to version {latest}.");
         }
         None => {
-            println!("No pre-built binary for your platform ({}).", binary_name);
+            println!("No pre-built binary for your platform ({binary_name}).");
             println!("Update manually:");
             println!("  cargo install mald");
             println!("  Or download from: {}", release.html_url);
@@ -132,7 +131,7 @@ fn get_binary_name() -> String {
         ""
     };
 
-    format!("mald-{}-{}{}", os, arch, ext)
+    format!("mald-{os}-{arch}{ext}")
 }
 
 /// Compare semver strings. Returns true if `new` is newer than `current`.

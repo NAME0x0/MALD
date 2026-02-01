@@ -117,7 +117,7 @@ mod tests {
         // with very short lines where overlap > advance
         let mut content = String::from("# Title\n");
         for i in 0..200 {
-            content.push_str(&format!("line {}\n", i));
+            content.push_str(&format!("line {i}\n"));
         }
         let chunks = chunk_document(&content);
         assert!(!chunks.is_empty());

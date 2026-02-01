@@ -6,13 +6,12 @@ use crate::fs::{ensure_directory, mald_home};
 pub async fn create(name: &str) -> Result<()> {
     let kb_path = mald_home().join("kb").join(name);
     if kb_path.exists() {
-        bail!("Knowledge base '{}' already exists", name);
+        bail!("Knowledge base '{name}' already exists");
     }
     ensure_directory(&kb_path)?;
 
     let index_content = format!(
-        "# {}\n\nKnowledge base created by MALD.\n\n## Notes\n\n- Start adding notes here\n",
-        name
+        "# {name}\n\nKnowledge base created by MALD.\n\n## Notes\n\n- Start adding notes here\n"
     );
     std::fs::write(kb_path.join("index.md"), index_content)?;
 
@@ -24,7 +23,7 @@ pub async fn create(name: &str) -> Result<()> {
         "---\ntitle: \ntags: []\ncreated: \n---\n\n# \n\n",
     )?;
 
-    println!("Created knowledge base: {}", name);
+    println!("Created knowledge base: {name}");
     println!("  Path: {}", kb_path.display());
     Ok(())
 }
@@ -82,7 +81,7 @@ pub async fn open(name: &str) -> Result<()> {
     let kb_path = mald_home().join("kb").join(name);
     if !kb_path.exists() {
         return Err(crate::errors::bail_ctx(
-            format!("Knowledge base '{}' not found", name),
+            format!("Knowledge base '{name}' not found"),
             "Run `mald kb list` to see available knowledge bases",
         ));
     }
@@ -96,7 +95,7 @@ pub async fn open(name: &str) -> Result<()> {
         .status()?;
 
     if !status.success() {
-        bail!("Editor '{}' exited with error", editor);
+        bail!("Editor '{editor}' exited with error");
     }
     Ok(())
 }

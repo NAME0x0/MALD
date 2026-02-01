@@ -51,7 +51,7 @@ pub async fn run(note: &str, kb: Option<&str>, output: Option<&str>) -> Result<(
         std::path::PathBuf::from(o)
     } else {
         let stem = filepath.file_stem().unwrap().to_string_lossy();
-        filepath.parent().unwrap().join(format!("{}.html", stem))
+        filepath.parent().unwrap().join(format!("{stem}.html"))
     };
 
     std::fs::write(&out_path, &full_html)?;
@@ -70,7 +70,7 @@ pub async fn export_all(kb: Option<&str>, output_dir: &str, format: &str) -> Res
 
     let kb_path = mald_home().join("kb").join(&kb_name);
     if !kb_path.exists() {
-        bail!("Knowledge base '{}' not found", kb_name);
+        bail!("Knowledge base '{kb_name}' not found");
     }
 
     let out = std::path::Path::new(output_dir);
@@ -92,15 +92,14 @@ pub async fn export_all(kb: Option<&str>, output_dir: &str, format: &str) -> Res
                 html::push_html(&mut html_body, parser);
 
                 let full_html = format!(
-                    "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><title>{}</title>\
+                    "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><title>{title}</title>\
                     <style>body{{max-width:720px;margin:2rem auto;padding:0 1rem;\
                     font-family:sans-serif;line-height:1.6}}code{{background:#f4f4f4;\
                     padding:0.2em 0.4em;border-radius:3px}}pre{{background:#f4f4f4;\
                     padding:1em;border-radius:6px;overflow-x:auto}}</style></head>\
-                    <body>{}</body></html>",
-                    title, html_body
+                    <body>{html_body}</body></html>"
                 );
-                std::fs::write(out.join(format!("{}.html", stem)), full_html)?;
+                std::fs::write(out.join(format!("{stem}.html")), full_html)?;
             }
             _ => {
                 // Plain markdown copy (portable export)
@@ -115,7 +114,7 @@ pub async fn export_all(kb: Option<&str>, output_dir: &str, format: &str) -> Res
         count += 1;
     }
 
-    println!("Exported {} files to {}", count, output_dir);
+    println!("Exported {count} files to {output_dir}");
     Ok(())
 }
 

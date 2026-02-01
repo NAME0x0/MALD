@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 pub mod ai;
 pub mod cli;
 pub mod commands;

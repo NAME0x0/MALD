@@ -12,7 +12,7 @@ pub fn run_hook(event: &str, note_path: Option<&Path>) {
         Err(_) => return,
     };
 
-    let key = format!("hooks.{}", event);
+    let key = format!("hooks.{event}");
     let cmd = match config.get_string(&key) {
         Some(c) if !c.is_empty() => c,
         _ => return,

@@ -71,7 +71,7 @@ pub async fn run() -> Result<()> {
     let count = crate::daemon::indexer::fts_index_kb(&kb_dir)?;
 
     println!("MALD initialized at {}", home.display());
-    println!("  Indexed {} files", count);
+    println!("  Indexed {count} files");
     println!("\nNext steps:");
     println!("  mald today          — open today's daily note");
     println!("  mald new \"Title\"    — create a new note");
@@ -86,10 +86,7 @@ pub async fn run() -> Result<()> {
     let editor = config.get_string("editor").unwrap_or_else(|| "nvim".into());
     let editor_missing = !crate::commands::doctor::which_exists_pub(&editor);
     if editor_missing {
-        println!(
-            "\nTip: '{}' not found in PATH. Run `mald setup` to configure your editor.",
-            editor
-        );
+        println!("\nTip: '{editor}' not found in PATH. Run `mald setup` to configure your editor.");
     }
 
     Ok(())

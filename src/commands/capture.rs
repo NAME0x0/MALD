@@ -16,7 +16,7 @@ pub async fn run(text: &str, kb: Option<&str>, tag: Option<&str>) -> Result<()> 
 
     let kb_path = mald_home().join("kb").join(&kb_name);
     if !kb_path.exists() {
-        bail!("Knowledge base '{}' not found", kb_name);
+        bail!("Knowledge base '{kb_name}' not found");
     }
 
     let now = Local::now();
@@ -37,9 +37,9 @@ pub async fn run(text: &str, kb: Option<&str>, tag: Option<&str>) -> Result<()> 
     // Append the capture
     let timestamp = now.format("%H:%M").to_string();
     let entry = if let Some(t) = tag {
-        format!("- `{}` #{} {}\n", timestamp, t, text)
+        format!("- `{timestamp}` #{t} {text}\n")
     } else {
-        format!("- `{}` {}\n", timestamp, text)
+        format!("- `{timestamp}` {text}\n")
     };
 
     let mut content = std::fs::read_to_string(&filepath)?;

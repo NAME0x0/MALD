@@ -5,7 +5,7 @@ use crate::index::hnsw::HnswIndex;
 /// Benchmark the HNSW vector index: insert and query throughput.
 pub async fn run(dim: usize, count: usize) -> Result<()> {
     println!("MALD Benchmark — HNSW Vector Index\n");
-    println!("Dimension: {}, Vectors: {}\n", dim, count);
+    println!("Dimension: {dim}, Vectors: {count}\n");
 
     // Generate random vectors
     let mut rng = rand_simple();

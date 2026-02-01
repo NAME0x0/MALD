@@ -64,7 +64,7 @@ pub async fn run(query: &str, k: usize, since: Option<&str>, json: bool) -> Resu
                                     .collect();
                                 println!("{}", serde_json::to_string_pretty(&items)?);
                             } else {
-                                println!("Semantic search results for: {}\n", query);
+                                println!("Semantic search results for: {query}\n");
                                 for (i, (id, score)) in results.iter().enumerate() {
                                     if let Some(chunk) = meta.get_chunk(*id)? {
                                         println!(
@@ -110,14 +110,14 @@ pub async fn run(query: &str, k: usize, since: Option<&str>, json: bool) -> Resu
             .collect();
         println!("{}", serde_json::to_string_pretty(&items)?);
     } else if results.is_empty() {
-        println!("No results for: {}", query);
+        println!("No results for: {query}");
     } else {
         let label = if since_date.is_some() {
             format!("Results for '{}' (since {}):", query, since.unwrap())
         } else {
-            format!("Results for '{}':", query)
+            format!("Results for '{query}':")
         };
-        println!("{}\n", label);
+        println!("{label}\n");
         for (i, r) in results.iter().enumerate() {
             println!("{}. {} ({})", i + 1, r.title, r.path);
             if !r.snippet.is_empty() {

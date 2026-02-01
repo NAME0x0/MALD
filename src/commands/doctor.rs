@@ -53,7 +53,7 @@ pub async fn run() -> Result<()> {
     check(
         "Knowledge bases",
         kb_count > 0,
-        &format!("{} found", kb_count),
+        &format!("{kb_count} found"),
         "Run `mald kb create <name>`",
         &mut issues,
     );
@@ -95,7 +95,7 @@ pub async fn run() -> Result<()> {
     check_warn(
         "Templates",
         template_count > 0,
-        &format!("{} found", template_count),
+        &format!("{template_count} found"),
         "Run `mald template init`",
         &mut warnings,
     );
@@ -107,13 +107,10 @@ pub async fn run() -> Result<()> {
         .unwrap_or_else(|| "nvim".into());
     let editor_exists = which_exists(&editor);
     check(
-        &format!("Editor ({})", editor),
+        &format!("Editor ({editor})"),
         editor_exists,
         "found in PATH",
-        &format!(
-            "Install {} or run `mald config set editor <editor>`",
-            editor
-        ),
+        &format!("Install {editor} or run `mald config set editor <editor>`"),
         &mut issues,
     );
 
@@ -175,7 +172,7 @@ pub async fn run() -> Result<()> {
             if broken_total == 0 {
                 "none".to_string()
             } else {
-                format!("{} broken", broken_total)
+                format!("{broken_total} broken")
             }
             .as_str(),
             "Run `mald graph broken-links` to see details",
@@ -199,7 +196,7 @@ pub async fn run() -> Result<()> {
     check_warn(
         "Plugins",
         true, // always ok, just informational
-        &format!("{} installed", plugin_count),
+        &format!("{plugin_count} installed"),
         "",
         &mut warnings,
     );
@@ -241,10 +238,10 @@ pub async fn run() -> Result<()> {
         println!("{}", "All checks passed.".green().bold());
     } else {
         if issues > 0 {
-            println!("{}", format!("{} issue(s) found.", issues).red().bold());
+            println!("{}", format!("{issues} issue(s) found.").red().bold());
         }
         if warnings > 0 {
-            println!("{}", format!("{} warning(s).", warnings).yellow());
+            println!("{}", format!("{warnings} warning(s).").yellow());
         }
     }
 

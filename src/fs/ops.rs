@@ -82,7 +82,7 @@ pub fn trash(path: &Path) -> Result<()> {
         .map(|f| f.to_string_lossy().to_string())
         .unwrap_or_else(|| "unknown".into());
     let timestamp = chrono::Local::now().format("%Y%m%d-%H%M%S");
-    let dest = trash_dir.join(format!("{}-{}", timestamp, filename));
+    let dest = trash_dir.join(format!("{timestamp}-{filename}"));
     std::fs::rename(path, &dest)
         .or_else(|_| {
             std::fs::copy(path, &dest)?;

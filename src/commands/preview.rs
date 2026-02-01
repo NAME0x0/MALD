@@ -45,13 +45,13 @@ fn resolve_transclusions(body: &str, kb: Option<&str>, depth: usize) -> String {
             // Try to load the referenced note
             match load_note_body(target, kb) {
                 Some(embedded) => {
-                    result.push_str(&format!("\n\x1b[90m─── embedded: {} ───\x1b[0m\n", target));
+                    result.push_str(&format!("\n\x1b[90m─── embedded: {target} ───\x1b[0m\n"));
                     let resolved = resolve_transclusions(&embedded, kb, depth + 1);
                     result.push_str(&resolved);
-                    result.push_str(&format!("\n\x1b[90m─── end: {} ───\x1b[0m\n", target));
+                    result.push_str(&format!("\n\x1b[90m─── end: {target} ───\x1b[0m\n"));
                 }
                 None => {
-                    result.push_str(&format!("\x1b[31m![[{} (not found)]]\x1b[0m", target));
+                    result.push_str(&format!("\x1b[31m![[{target} (not found)]]\x1b[0m"));
                 }
             }
             remaining = &after_open[end + 2..];
@@ -93,7 +93,7 @@ fn render_markdown(body: &str) {
                 };
                 println!();
                 let prefix = "#".repeat(_heading_level as usize);
-                print!("\x1b[1;36m{} ", prefix);
+                print!("\x1b[1;36m{prefix} ");
             }
             Event::End(TagEnd::Heading(_)) => {
                 println!("\x1b[0m");
@@ -106,7 +106,7 @@ fn render_markdown(body: &str) {
                     _ => String::new(),
                 };
                 if !_code_lang.is_empty() {
-                    println!("\x1b[90m─── {} ───\x1b[0m", _code_lang);
+                    println!("\x1b[90m─── {_code_lang} ───\x1b[0m");
                 } else {
                     println!("\x1b[90m───────────\x1b[0m");
                 }
@@ -151,7 +151,7 @@ fn render_markdown(body: &str) {
             }
             Event::End(TagEnd::Link) => {
                 if !link_url.is_empty() {
-                    print!(" \x1b[90m({})\x1b[0m", link_url);
+                    print!(" \x1b[90m({link_url})\x1b[0m");
                 }
                 _in_link = false;
                 link_url.clear();
@@ -163,16 +163,16 @@ fn render_markdown(body: &str) {
                 println!("\x1b[0m");
             }
             Event::Code(text) => {
-                print!("\x1b[33m{}\x1b[0m", text);
+                print!("\x1b[33m{text}\x1b[0m");
             }
             Event::Text(text) => {
                 if in_code {
-                    print!("\x1b[37m  {}\x1b[0m", text);
+                    print!("\x1b[37m  {text}\x1b[0m");
                 } else if in_heading {
-                    print!("{}", text);
+                    print!("{text}");
                 } else {
                     let rendered = render_wikilinks(&text);
-                    print!("{}", rendered);
+                    print!("{rendered}");
                 }
             }
             Event::SoftBreak | Event::HardBreak => {
@@ -203,7 +203,7 @@ fn render_wikilinks(text: &str) -> String {
         let after_open = &remaining[start + 2..];
         if let Some(end) = after_open.find("]]") {
             let link_target = &after_open[..end];
-            result.push_str(&format!("\x1b[35m[[{}]]\x1b[0m", link_target));
+            result.push_str(&format!("\x1b[35m[[{link_target}]]\x1b[0m"));
             remaining = &after_open[end + 2..];
         } else {
             result.push_str("[[");

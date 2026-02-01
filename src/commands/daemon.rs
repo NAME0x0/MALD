@@ -71,7 +71,7 @@ pub async fn status() -> Result<()> {
             .unwrap_or_default()
             .trim()
             .to_string();
-        println!("Daemon is running (PID: {})", pid);
+        println!("Daemon is running (PID: {pid})");
     } else {
         println!("Daemon is not running.");
     }
@@ -138,7 +138,7 @@ fn process_alive(pid: u32) -> bool {
     #[cfg(windows)]
     {
         let output = std::process::Command::new("tasklist")
-            .args(["/FI", &format!("PID eq {}", pid), "/NH"])
+            .args(["/FI", &format!("PID eq {pid}"), "/NH"])
             .output();
         match output {
             Ok(out) => {

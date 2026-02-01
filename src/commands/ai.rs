@@ -96,7 +96,7 @@ async fn auto_pull_default_model(client: &OllamaClient) {
     let model = if client.pull_model_stream(DEFAULT_CHAT_MODEL).await.is_ok() {
         DEFAULT_CHAT_MODEL
     } else {
-        eprintln!("gemma3n not available, trying {}...", FALLBACK_CHAT_MODEL);
+        eprintln!("gemma3n not available, trying {FALLBACK_CHAT_MODEL}...");
         if client.pull_model_stream(FALLBACK_CHAT_MODEL).await.is_ok() {
             FALLBACK_CHAT_MODEL
         } else {
@@ -149,8 +149,8 @@ fn load_all_notes(kb: Option<&str>) -> Result<Vec<(String, String)>> {
     let kb_path = mald_home().join("kb").join(&kb_name);
     if !kb_path.exists() {
         return Err(crate::errors::bail_ctx(
-            format!("Knowledge base '{}' not found", kb_name),
-            format!("Create it with: `mald kb create {}`", kb_name),
+            format!("Knowledge base '{kb_name}' not found"),
+            format!("Create it with: `mald kb create {kb_name}`"),
         ));
     }
 
@@ -179,8 +179,8 @@ fn load_recent_notes(kb: Option<&str>, days: u64) -> Result<Vec<(String, String)
     let kb_path = mald_home().join("kb").join(&kb_name);
     if !kb_path.exists() {
         return Err(crate::errors::bail_ctx(
-            format!("Knowledge base '{}' not found", kb_name),
-            format!("Create it with: `mald kb create {}`", kb_name),
+            format!("Knowledge base '{kb_name}' not found"),
+            format!("Create it with: `mald kb create {kb_name}`"),
         ));
     }
 
@@ -225,7 +225,7 @@ pub async fn chat_cmd(message: Option<&str>, kb: Option<&str>, new_session: bool
         }
         None => {
             // Interactive REPL
-            println!("MALD AI Chat (kb: {}) — type /quit to exit\n", kb_name);
+            println!("MALD AI Chat (kb: {kb_name}) — type /quit to exit\n");
             loop {
                 use std::io::Write;
                 print!("you> ");
@@ -250,7 +250,7 @@ pub async fn chat_cmd(message: Option<&str>, kb: Option<&str>, new_session: bool
                     for msg in &session.messages {
                         let prefix = if msg.role == "user" { "you" } else { "ai" };
                         let preview: String = msg.content.chars().take(80).collect();
-                        println!("  {}: {}", prefix, preview);
+                        println!("  {prefix}: {preview}");
                     }
                     println!();
                     continue;
@@ -299,14 +299,12 @@ async fn do_chat_turn(
 
     let system_prompt = if context.is_empty() {
         format!(
-            "You are a helpful assistant for the knowledge base '{}'. Answer directly and concisely.",
-            kb_name
+            "You are a helpful assistant for the knowledge base '{kb_name}'. Answer directly and concisely."
         )
     } else {
         format!(
-            "You are a helpful assistant for the knowledge base '{}'. \
-             Answer using ONLY the following sources. Cite sources using [1], [2], etc.\n\n{}",
-            kb_name, context
+            "You are a helpful assistant for the knowledge base '{kb_name}'. \
+             Answer using ONLY the following sources. Cite sources using [1], [2], etc.\n\n{context}"
         )
     };
 
@@ -352,7 +350,7 @@ pub async fn summarize(notes: &[String], kb: Option<&str>) -> Result<()> {
     }
 
     let result = chat::summarize(&client, &config, &contents).await?;
-    println!("{}", result);
+    println!("{result}");
     Ok(())
 }
 
@@ -372,7 +370,7 @@ pub async fn quiz(notes: &[String], kb: Option<&str>, count: usize) -> Result<()
     }
 
     let result = chat::quiz(&client, &config, &contents, count).await?;
-    println!("{}", result);
+    println!("{result}");
     Ok(())
 }
 
@@ -383,13 +381,13 @@ pub async fn briefing(kb: Option<&str>, days: u64) -> Result<()> {
 
     let contents = load_recent_notes(kb, days)?;
     if contents.is_empty() {
-        println!("No notes modified in the last {} days.", days);
+        println!("No notes modified in the last {days} days.");
         return Ok(());
     }
 
     println!("Analyzing {} recent notes...\n", contents.len());
     let result = chat::briefing(&client, &config, &contents).await?;
-    println!("{}", result);
+    println!("{result}");
     Ok(())
 }
 
@@ -404,7 +402,7 @@ pub async fn compare(notes: &[String], kb: Option<&str>) -> Result<()> {
     }
 
     let result = chat::compare(&client, &config, &contents).await?;
-    println!("{}", result);
+    println!("{result}");
     Ok(())
 }
 
@@ -424,7 +422,7 @@ pub async fn timeline(notes: &[String], kb: Option<&str>) -> Result<()> {
     }
 
     let result = chat::timeline(&client, &config, &contents).await?;
-    println!("{}", result);
+    println!("{result}");
     Ok(())
 }
 
@@ -441,7 +439,7 @@ pub async fn explain(note: &str, kb: Option<&str>) -> Result<()> {
         .unwrap_or_else(|| note.to_string());
 
     let result = chat::explain(&client, &config, &title, &content).await?;
-    println!("{}", result);
+    println!("{result}");
     Ok(())
 }
 
@@ -476,7 +474,7 @@ pub async fn models() -> Result<()> {
         println!("No models found. Pull one with `mald ai pull <model>`.");
     } else {
         for model in models {
-            println!("  {}", model);
+            println!("  {model}");
         }
     }
     Ok(())
@@ -485,7 +483,7 @@ pub async fn models() -> Result<()> {
 pub async fn pull(model: &str) -> Result<()> {
     let (_config, client) = load_config()?;
     ensure_ollama(&client).await?;
-    println!("Pulling model: {}", model);
+    println!("Pulling model: {model}");
     client.pull_model(model).await?;
     println!("Done.");
     Ok(())
@@ -560,33 +558,24 @@ pub async fn setup_ai() -> Result<()> {
 
     // Try gemma3n first (Google Gemma 3 Nano — fastest inference, lowest compute)
     // Fall back to gemma3:4b if gemma3n isn't available in this Ollama version
-    println!(
-        "  Pulling {} (chat model — fast inference, low compute)...",
-        DEFAULT_CHAT_MODEL
-    );
+    println!("  Pulling {DEFAULT_CHAT_MODEL} (chat model — fast inference, low compute)...");
     let chat_model = if client.pull_model_stream(DEFAULT_CHAT_MODEL).await.is_ok() {
         println!("  {} {} ready", "->".green(), DEFAULT_CHAT_MODEL);
         DEFAULT_CHAT_MODEL
     } else {
-        println!(
-            "  {} not available, trying {}...",
-            DEFAULT_CHAT_MODEL, FALLBACK_CHAT_MODEL
-        );
+        println!("  {DEFAULT_CHAT_MODEL} not available, trying {FALLBACK_CHAT_MODEL}...");
         if client.pull_model_stream(FALLBACK_CHAT_MODEL).await.is_ok() {
             println!("  {} {} ready", "->".green(), FALLBACK_CHAT_MODEL);
             FALLBACK_CHAT_MODEL
         } else {
             println!("  {} Could not pull chat model", "warning:".yellow());
-            println!(
-                "  You can pull manually: mald ai pull {}",
-                DEFAULT_CHAT_MODEL
-            );
+            println!("  You can pull manually: mald ai pull {DEFAULT_CHAT_MODEL}");
             DEFAULT_CHAT_MODEL
         }
     };
 
     println!();
-    println!("  Pulling {} (embedding model)...", DEFAULT_EMBED_MODEL);
+    println!("  Pulling {DEFAULT_EMBED_MODEL} (embedding model)...");
     if let Err(e) = client.pull_model_stream(DEFAULT_EMBED_MODEL).await {
         println!(
             "  {} Failed to pull {}: {}",
@@ -594,10 +583,7 @@ pub async fn setup_ai() -> Result<()> {
             DEFAULT_EMBED_MODEL,
             e
         );
-        println!(
-            "  You can pull it later: mald ai pull {}",
-            DEFAULT_EMBED_MODEL
-        );
+        println!("  You can pull it later: mald ai pull {DEFAULT_EMBED_MODEL}");
     } else {
         println!("  {} {} ready", "->".green(), DEFAULT_EMBED_MODEL);
     }
@@ -629,10 +615,7 @@ pub async fn setup_ai() -> Result<()> {
         "mald ai models".cyan()
     );
     println!();
-    println!(
-        "  Model: {} (Google Gemma 3 Nano — optimized for on-device speed)",
-        chat_model
-    );
+    println!("  Model: {chat_model} (Google Gemma 3 Nano — optimized for on-device speed)");
 
     Ok(())
 }
@@ -671,7 +654,7 @@ async fn install_ollama() -> bool {
 pub async fn index(kb_name: &str) -> Result<()> {
     let kb_path = mald_home().join("kb").join(kb_name);
     if !kb_path.exists() {
-        bail!("Knowledge base '{}' not found", kb_name);
+        bail!("Knowledge base '{kb_name}' not found");
     }
 
     let config_path = mald_home().join("config").join("config.json");
@@ -679,7 +662,7 @@ pub async fn index(kb_name: &str) -> Result<()> {
     let client = OllamaClient::from_config(&config);
     ensure_ollama(&client).await?;
 
-    println!("Indexing knowledge base: {}", kb_name);
+    println!("Indexing knowledge base: {kb_name}");
     crate::daemon::indexer::full_index(&kb_path, &config).await?;
     println!("Indexing complete.");
     Ok(())

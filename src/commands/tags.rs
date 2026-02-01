@@ -50,9 +50,9 @@ pub async fn filter(tag: &str, kb: Option<&str>, json: bool) -> Result<()> {
             if json {
                 println!("{}", serde_json::to_string_pretty(files)?);
             } else {
-                println!("Notes tagged #{}:\n", clean_tag);
+                println!("Notes tagged #{clean_tag}:\n");
                 for f in files {
-                    println!("  {}", f);
+                    println!("  {f}");
                 }
             }
         }
@@ -60,7 +60,7 @@ pub async fn filter(tag: &str, kb: Option<&str>, json: bool) -> Result<()> {
             if json {
                 println!("[]");
             } else {
-                println!("No notes tagged #{}", clean_tag);
+                println!("No notes tagged #{clean_tag}");
 
                 // Suggest similar tags
                 let suggestions: Vec<&String> = tag_map
@@ -72,7 +72,7 @@ pub async fn filter(tag: &str, kb: Option<&str>, json: bool) -> Result<()> {
                         "Did you mean: {}?",
                         suggestions
                             .iter()
-                            .map(|t| format!("#{}", t))
+                            .map(|t| format!("#{t}"))
                             .collect::<Vec<_>>()
                             .join(", ")
                     );

@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 mod ai;
 mod cli;
 mod commands;

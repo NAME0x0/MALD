@@ -53,7 +53,7 @@ pub async fn commit() -> Result<()> {
     run_git(&home, &["add", "-A"])?;
     run_git(&home, &["commit", "-m", &msg])?;
 
-    println!("Changes committed: {}", msg);
+    println!("Changes committed: {msg}");
     Ok(())
 }
 
@@ -88,14 +88,14 @@ pub async fn sync() -> Result<()> {
     match run_git(&home, &["pull", "--rebase", "--autostash"]) {
         Ok(_) => {}
         Err(e) => {
-            let err_str = format!("{}", e);
+            let err_str = format!("{e}");
             if err_str.contains("CONFLICT") || err_str.contains("conflict") {
                 println!("Rebase conflict detected. Aborting rebase and using merge instead.");
                 let _ = run_git(&home, &["rebase", "--abort"]);
                 match run_git(&home, &["pull", "--no-rebase"]) {
                     Ok(_) => println!("Merged with remote (may have merge commit)."),
                     Err(e2) => {
-                        println!("Merge also failed: {}", e2);
+                        println!("Merge also failed: {e2}");
                         println!("\nManual resolution needed:");
                         println!("  cd {}", home.display());
                         println!("  git status     # see conflicting files");
@@ -104,7 +104,7 @@ pub async fn sync() -> Result<()> {
                     }
                 }
             } else {
-                println!("Pull failed (offline?): {}", e);
+                println!("Pull failed (offline?): {e}");
             }
         }
     }
@@ -114,7 +114,7 @@ pub async fn sync() -> Result<()> {
     match run_git(&home, &["push"]) {
         Ok(_) => println!("Synced."),
         Err(e) => {
-            println!("Push failed: {}", e);
+            println!("Push failed: {e}");
         }
     }
 
@@ -126,7 +126,7 @@ pub async fn log(note: Option<&str>, count: usize) -> Result<()> {
     let home = mald_home();
     ensure_git(&home)?;
 
-    let n_str = format!("-{}", count);
+    let n_str = format!("-{count}");
     let args = if let Some(note_name) = note {
         // Find the file
         let kb_dir = home.join("kb");
@@ -147,13 +147,13 @@ pub async fn log(note: Option<&str>, count: usize) -> Result<()> {
             .collect();
 
         if matching.is_empty() {
-            println!("No matching note found for '{}'", note_name);
+            println!("No matching note found for '{note_name}'");
             return Ok(());
         }
 
         // Show log for first match
         let path = &matching[0];
-        println!("History for {}:\n", path);
+        println!("History for {path}:\n");
         vec![
             "log".to_string(),
             "--oneline".to_string(),
@@ -177,7 +177,7 @@ pub async fn log(note: Option<&str>, count: usize) -> Result<()> {
     if output.trim().is_empty() {
         println!("No history found.");
     } else {
-        println!("{}", output);
+        println!("{output}");
     }
 
     Ok(())

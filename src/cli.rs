@@ -668,10 +668,10 @@ pub async fn run(cli: Cli) -> anyhow::Result<()> {
             } else if let Some(n) = note {
                 crate::commands::export::run(&n, kb.as_deref(), output.as_deref()).await
             } else {
-                return Err(crate::errors::bail_ctx(
+                Err(crate::errors::bail_ctx(
                     "Specify a note name, or use --all to export entire KB",
                     "Examples: `mald export my-note` or `mald export --all`",
-                ));
+                ))
             }
         }
         Some(Command::Import {

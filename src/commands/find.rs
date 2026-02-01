@@ -48,7 +48,7 @@ pub async fn run(query: Vec<String>, _kb: Option<&str>) -> Result<()> {
     // Build FTS query with prefix matching
     let fts_query: String = joined
         .split_whitespace()
-        .map(|w| format!("{}*", w))
+        .map(|w| format!("{w}*"))
         .collect::<Vec<_>>()
         .join(" ");
 
@@ -56,7 +56,7 @@ pub async fn run(query: Vec<String>, _kb: Option<&str>) -> Result<()> {
 
     if results.is_empty() {
         return Err(crate::errors::bail_ctx(
-            format!("No results for: {}", joined),
+            format!("No results for: {joined}"),
             "Try broader terms or run `mald kb list` to see available KBs",
         ));
     }
@@ -73,7 +73,7 @@ pub async fn run(query: Vec<String>, _kb: Option<&str>) -> Result<()> {
         fzf_select(&results, &editor)?;
     } else {
         // Fallback: numbered list
-        println!("Results for '{}':\n", joined);
+        println!("Results for '{joined}':\n");
         let show = results.len().min(15);
         for (i, r) in results.iter().take(show).enumerate() {
             let label = if r.title.is_empty() {
@@ -81,7 +81,7 @@ pub async fn run(query: Vec<String>, _kb: Option<&str>) -> Result<()> {
             } else {
                 &r.title
             };
-            println!("  [{}] {}", i, label);
+            println!("  [{i}] {label}");
         }
         println!();
         print!("Open [0-{}]: ", show - 1);

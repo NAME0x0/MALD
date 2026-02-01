@@ -35,7 +35,7 @@ pub async fn list(kb: Option<&str>, all_kbs: bool, json: bool) -> Result<()> {
             if json {
                 println!("[]");
             } else {
-                println!("Knowledge base '{}' not found.", kb_name);
+                println!("Knowledge base '{kb_name}' not found.");
             }
             return Ok(());
         }
@@ -85,10 +85,10 @@ pub async fn list(kb: Option<&str>, all_kbs: bool, json: bool) -> Result<()> {
 
         if !json && !kb_tasks.is_empty() {
             if dirs.len() > 1 {
-                println!("[{}]", kb_name);
+                println!("[{kb_name}]");
             }
             for (note, task) in &kb_tasks {
-                println!("  [ ] {} ({})", task, note);
+                println!("  [ ] {task} ({note})");
             }
             if dirs.len() > 1 {
                 println!();
@@ -101,7 +101,7 @@ pub async fn list(kb: Option<&str>, all_kbs: bool, json: bool) -> Result<()> {
     } else if total == 0 {
         println!("No open tasks.");
     } else {
-        println!("\n{} open, {} done", total, done);
+        println!("\n{total} open, {done} done");
     }
 
     Ok(())

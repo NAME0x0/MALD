@@ -4,8 +4,7 @@ use std::fs;
 use tempfile::TempDir;
 
 fn mald_cmd() -> Command {
-    let mut cmd = Command::cargo_bin("mald").unwrap();
-    cmd
+    Command::cargo_bin("mald").unwrap()
 }
 
 fn setup_mald_home() -> TempDir {
@@ -390,7 +389,7 @@ fn test_capture_content_written() {
         .path()
         .join("kb")
         .join("personal")
-        .join(format!("{}.md", today));
+        .join(format!("{today}.md"));
     let content = fs::read_to_string(&daily_path).unwrap();
     assert!(content.contains("unique-capture-test-string-xyz"));
 }
@@ -412,7 +411,7 @@ fn test_capture_with_tag_content() {
         .path()
         .join("kb")
         .join("personal")
-        .join(format!("{}.md", today));
+        .join(format!("{today}.md"));
     let content = fs::read_to_string(&daily_path).unwrap();
     assert!(content.contains("tagged-capture-test"));
     assert!(content.contains("#inbox"));
@@ -654,7 +653,7 @@ fn test_multiple_captures_append() {
         .path()
         .join("kb")
         .join("personal")
-        .join(format!("{}.md", today));
+        .join(format!("{today}.md"));
     let content = fs::read_to_string(&daily_path).unwrap();
     assert!(content.contains("first-capture-aaa"));
     assert!(content.contains("second-capture-bbb"));

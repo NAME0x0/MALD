@@ -59,7 +59,7 @@ pub async fn run() -> Result<()> {
     println!("Knowledge bases:");
     for (name, count) in &kb_names {
         let marker = if *name == default_kb { " *" } else { "" };
-        println!("  {:20} {:>4} notes{}", name, count, marker);
+        println!("  {name:20} {count:>4} notes{marker}");
     }
     println!("  {:20} {:>4} total\n", "", total_notes);
 
@@ -103,7 +103,7 @@ pub async fn run() -> Result<()> {
                 .file_stem()
                 .map(|s| s.to_string_lossy().to_string())
                 .unwrap_or_default();
-            println!("  [ ] {} ({})", task, short_note);
+            println!("  [ ] {task} ({short_note})");
         }
         if tasks.len() > 5 {
             println!(
@@ -139,7 +139,7 @@ pub async fn run() -> Result<()> {
                     println!("Suggestions:");
                     has_suggestions = true;
                 }
-                println!("  mald ai index {}  # Build semantic search", default_kb);
+                println!("  mald ai index {default_kb}  # Build semantic search");
             }
         }
     }

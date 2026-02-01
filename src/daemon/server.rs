@@ -109,7 +109,7 @@ async fn start_tcp_server(auth_token: String) -> Result<()> {
             .unwrap_or(7433) as u16
     };
 
-    let listener = tokio::net::TcpListener::bind(format!("127.0.0.1:{}", port)).await?;
+    let listener = tokio::net::TcpListener::bind(format!("127.0.0.1:{port}")).await?;
     tracing::info!("Daemon listening on 127.0.0.1:{}", port);
 
     loop {

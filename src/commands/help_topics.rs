@@ -13,7 +13,7 @@ pub async fn run(topic: &str) -> Result<()> {
         "tasks" => TASK_HELP,
         "shortcuts" | "aliases" | "convenience" => SHORTCUTS_HELP,
         _ => {
-            println!("Unknown topic: '{}'\n", topic);
+            println!("Unknown topic: '{topic}'\n");
             println!("Available topics:");
             println!("  ai         — AI chat, RAG, summarize, quiz, models");
             println!("  search     — FTS, semantic search, date filtering");
@@ -27,7 +27,7 @@ pub async fn run(topic: &str) -> Result<()> {
             return Ok(());
         }
     };
-    println!("{}", text);
+    println!("{text}");
     Ok(())
 }
 

@@ -14,11 +14,7 @@ pub async fn run(title: &str, kb: Option<&str>) -> Result<()> {
 
     let kb_path = mald_home().join("kb").join(&kb_name);
     if !kb_path.exists() {
-        bail!(
-            "Knowledge base '{}' not found. Create it with `mald kb create {}`",
-            kb_name,
-            kb_name
-        );
+        bail!("Knowledge base '{kb_name}' not found. Create it with `mald kb create {kb_name}`");
     }
 
     let now = Local::now();
@@ -71,11 +67,7 @@ pub async fn today(kb: Option<&str>) -> Result<()> {
 
     let kb_path = mald_home().join("kb").join(&kb_name);
     if !kb_path.exists() {
-        bail!(
-            "Knowledge base '{}' not found. Create it with `mald kb create {}`",
-            kb_name,
-            kb_name
-        );
+        bail!("Knowledge base '{kb_name}' not found. Create it with `mald kb create {kb_name}`");
     }
 
     let now = Local::now();

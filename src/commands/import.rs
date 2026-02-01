@@ -8,7 +8,7 @@ use crate::fs::{ensure_directory, mald_home};
 pub async fn run(source: &str, kb: Option<&str>, flatten: bool) -> Result<()> {
     let source_path = Path::new(source);
     if !source_path.exists() {
-        bail!("Source path does not exist: {}", source);
+        bail!("Source path does not exist: {source}");
     }
 
     let config_path = mald_home().join("config").join("config.json");
@@ -22,12 +22,12 @@ pub async fn run(source: &str, kb: Option<&str>, flatten: bool) -> Result<()> {
     if !kb_path.exists() {
         // Auto-create the KB
         ensure_directory(&kb_path)?;
-        println!("Created knowledge base: {}", kb_name);
+        println!("Created knowledge base: {kb_name}");
     }
 
     let md_files = collect_md_files(source_path)?;
     if md_files.is_empty() {
-        println!("No .md files found in {}", source);
+        println!("No .md files found in {source}");
         return Ok(());
     }
 
@@ -77,14 +77,14 @@ pub async fn run(source: &str, kb: Option<&str>, flatten: bool) -> Result<()> {
     let count = crate::daemon::indexer::fts_index_kb(&kb_path)?;
 
     println!("\nImport complete:");
-    println!("  {} notes imported", imported);
+    println!("  {imported} notes imported");
     if skipped > 0 {
-        println!("  {} skipped (already exist)", skipped);
+        println!("  {skipped} skipped (already exist)");
     }
     if assets_copied > 0 {
-        println!("  {} asset files copied", assets_copied);
+        println!("  {assets_copied} asset files copied");
     }
-    println!("  {} files indexed", count);
+    println!("  {count} files indexed");
 
     Ok(())
 }

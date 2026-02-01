@@ -14,7 +14,7 @@ pub async fn run(old_name: &str, new_name: &str, kb: Option<&str>) -> Result<()>
     let kb_path = mald_home().join("kb").join(&kb_name);
 
     if !kb_path.exists() {
-        bail!("Knowledge base '{}' not found", kb_name);
+        bail!("Knowledge base '{kb_name}' not found");
     }
 
     let files = crate::fs::find_files(&kb_path, "md")?;
@@ -29,7 +29,7 @@ pub async fn run(old_name: &str, new_name: &str, kb: Option<&str>) -> Result<()>
 
     let source_file = match source_file {
         Some(f) => f.clone(),
-        None => bail!("Note '{}' not found in KB '{}'", old_name, kb_name),
+        None => bail!("Note '{old_name}' not found in KB '{kb_name}'"),
     };
 
     // Build the new filename, preserving date prefix if present
@@ -49,7 +49,7 @@ pub async fn run(old_name: &str, new_name: &str, kb: Option<&str>) -> Result<()>
         slugify(new_name)
     };
 
-    let new_file = source_file.with_file_name(format!("{}.md", new_stem));
+    let new_file = source_file.with_file_name(format!("{new_stem}.md"));
 
     if new_file.exists() {
         bail!("Target file already exists: {}", new_file.display());
@@ -115,12 +115,9 @@ pub async fn run(old_name: &str, new_name: &str, kb: Option<&str>) -> Result<()>
         }
     }
 
-    println!("Renamed: {} -> {}", old_stem, new_stem);
+    println!("Renamed: {old_stem} -> {new_stem}");
     if updated_count > 0 {
-        println!(
-            "Updated {} file(s) with new wikilink references.",
-            updated_count
-        );
+        println!("Updated {updated_count} file(s) with new wikilink references.");
     }
 
     Ok(())
@@ -132,7 +129,7 @@ fn update_wikilinks(content: &str, old_lower: &str, new_name: &str) -> String {
     re.replace_all(content, |caps: &regex::Captures| {
         let inner = &caps[1];
         if inner.to_lowercase() == *old_lower {
-            format!("[[{}]]", new_name)
+            format!("[[{new_name}]]")
         } else {
             caps[0].to_string()
         }
@@ -150,14 +147,14 @@ fn update_title_in_frontmatter(content: &str, new_title: &str) -> String {
         let mut new_yaml = String::new();
         for line in yaml.lines() {
             if line.trim().starts_with("title:") {
-                new_yaml.push_str(&format!("title: {}", new_title));
+                new_yaml.push_str(&format!("title: {new_title}"));
             } else {
                 new_yaml.push_str(line);
             }
             new_yaml.push('\n');
         }
         let rest = &trimmed[3 + end + 4..];
-        format!("---\n{}---{}", new_yaml, rest)
+        format!("---\n{new_yaml}---{rest}")
     } else {
         content.to_string()
     }

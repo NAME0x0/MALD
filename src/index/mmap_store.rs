@@ -132,7 +132,7 @@ pub fn read(path: &Path) -> Result<HnswIndex> {
         if version == 1 {
             return read_v1(&mmap);
         }
-        bail!("Unsupported HNSW index version: {}", version);
+        bail!("Unsupported HNSW index version: {version}");
     }
 
     let dim = read_u32(&mmap, &mut pos) as usize;

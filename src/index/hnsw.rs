@@ -12,6 +12,7 @@ fn ml() -> f64 {
 }
 
 #[derive(Clone)]
+#[allow(dead_code)]
 pub(crate) struct Node {
     pub(crate) id: u32,
     pub(crate) vector: Vec<f32>,
@@ -408,7 +409,7 @@ mod tests {
     fn test_empty_index() {
         let index = HnswIndex::new(8);
         assert!(index.is_empty());
-        let results = index.search(&vec![0.0; 8], 5);
+        let results = index.search(&[0.0; 8], 5);
         assert!(results.is_empty());
     }
 

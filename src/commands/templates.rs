@@ -19,7 +19,7 @@ pub async fn create_from_template(
         .unwrap_or_else(|| "personal".into());
 
     let template_dir = mald_home().join("templates");
-    let template_path = template_dir.join(format!("{}.md", template_name));
+    let template_path = template_dir.join(format!("{template_name}.md"));
     if !template_path.exists() {
         bail!(
             "Template '{}' not found. Available: {}",
@@ -33,7 +33,7 @@ pub async fn create_from_template(
 
     let kb_path = mald_home().join("kb").join(&kb_name);
     if !kb_path.exists() {
-        bail!("Knowledge base '{}' not found", kb_name);
+        bail!("Knowledge base '{kb_name}' not found");
     }
 
     let now = Local::now();
@@ -79,7 +79,7 @@ pub async fn list() -> Result<()> {
         println!("\n# {{{{title}}}}\n\n## Attendees\n\n- \n\n## Agenda\n\n- \n\n## Action Items\n\n- [ ] ");
     } else {
         for name in names {
-            println!("  {}", name);
+            println!("  {name}");
         }
     }
     Ok(())
@@ -114,7 +114,7 @@ pub fn init_defaults() -> Result<()> {
     ];
 
     for (name, content) in defaults {
-        let path = dir.join(format!("{}.md", name));
+        let path = dir.join(format!("{name}.md"));
         if !path.exists() {
             std::fs::write(&path, content)?;
         }
@@ -141,22 +141,18 @@ pub async fn create(name: &str) -> Result<()> {
     let dir = mald_home().join("templates");
     ensure_directory(&dir)?;
 
-    let path = dir.join(format!("{}.md", name));
+    let path = dir.join(format!("{name}.md"));
     if path.exists() {
-        bail!("Template '{}' already exists", name);
+        bail!("Template '{name}' already exists");
     }
 
     let content = format!(
-        "---\ntitle: {{{{title}}}}\ncreated: {{{{datetime}}}}\ntags: [{}]\n---\n\n# {{{{title}}}}\n\n",
-        name
+        "---\ntitle: {{{{title}}}}\ncreated: {{{{datetime}}}}\ntags: [{name}]\n---\n\n# {{{{title}}}}\n\n"
     );
     std::fs::write(&path, &content)?;
 
     println!("Created template: {}", path.display());
-    println!(
-        "Edit it, then use with: mald new \"Title\" --template {}",
-        name
-    );
+    println!("Edit it, then use with: mald new \"Title\" --template {name}");
 
     // Open in editor
     let config_path = mald_home().join("config").join("config.json");
@@ -171,18 +167,18 @@ pub async fn create(name: &str) -> Result<()> {
 
 /// Delete a user template.
 pub async fn delete(name: &str) -> Result<()> {
-    let path = mald_home().join("templates").join(format!("{}.md", name));
+    let path = mald_home().join("templates").join(format!("{name}.md"));
     if !path.exists() {
-        bail!("Template '{}' not found", name);
+        bail!("Template '{name}' not found");
     }
     std::fs::remove_file(&path)?;
-    println!("Deleted template: {}", name);
+    println!("Deleted template: {name}");
     Ok(())
 }
 
 /// Edit an existing template.
 pub async fn edit(name: &str) -> Result<()> {
-    let path = mald_home().join("templates").join(format!("{}.md", name));
+    let path = mald_home().join("templates").join(format!("{name}.md"));
     if !path.exists() {
         bail!(
             "Template '{}' not found. Available: {}",

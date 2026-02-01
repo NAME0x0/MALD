@@ -17,7 +17,7 @@ pub async fn run(kb: Option<&str>, auto_fix: bool) -> Result<()> {
     let kb_path = mald_home().join("kb").join(&kb_name);
     if !kb_path.exists() {
         return Err(crate::errors::bail_ctx(
-            format!("Knowledge base '{}' not found", kb_name),
+            format!("Knowledge base '{kb_name}' not found"),
             "Run `mald kb list` to see available KBs",
         ));
     }
@@ -109,7 +109,7 @@ pub async fn run(kb: Option<&str>, auto_fix: bool) -> Result<()> {
         if !fixes.is_empty() {
             let mut new_content = content.clone();
             for (old, new) in &fixes {
-                new_content = new_content.replace(&format!("[[{}]]", old), &format!("[[{}]]", new));
+                new_content = new_content.replace(&format!("[[{old}]]"), &format!("[[{new}]]"));
             }
             std::fs::write(path, new_content)?;
         }
@@ -119,10 +119,7 @@ pub async fn run(kb: Option<&str>, auto_fix: bool) -> Result<()> {
     if total_broken == 0 {
         println!("{}", "No broken wikilinks found.".green());
     } else {
-        println!(
-            "{} broken link(s) found, {} fixed.",
-            total_broken, total_fixed
-        );
+        println!("{total_broken} broken link(s) found, {total_fixed} fixed.");
         if !auto_fix && total_broken > total_fixed {
             println!(
                 "Run {} to auto-fix high-confidence matches.",
@@ -182,11 +179,11 @@ pub fn find_backlinks(target_stem: &str) -> Vec<(String, String)> {
                                     // Find the line containing the link
                                     let context_line = content
                                         .lines()
-                                        .find(|l| l.contains(&format!("[[{}]]", link)))
+                                        .find(|l| l.contains(&format!("[[{link}]]")))
                                         .unwrap_or("")
                                         .trim()
                                         .to_string();
-                                    backlinks.push((format!("{}/{}", kb_name, stem), context_line));
+                                    backlinks.push((format!("{kb_name}/{stem}"), context_line));
                                     break; // one per file
                                 }
                             }
@@ -209,8 +206,8 @@ fn edit_distance(a: &str, b: &str) -> usize {
     for (i, row) in dp.iter_mut().enumerate().take(m + 1) {
         row[0] = i;
     }
-    for j in 0..=n {
-        dp[0][j] = j;
+    for (j, val) in dp[0].iter_mut().enumerate().take(n + 1) {
+        *val = j;
     }
     for i in 1..=m {
         for j in 1..=n {

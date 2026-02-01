@@ -17,8 +17,8 @@ pub async fn run(query: &str, kb: Option<&str>) -> Result<()> {
     let kb_path = mald_home().join("kb").join(&kb_name);
     if !kb_path.exists() {
         return Err(crate::errors::bail_ctx(
-            format!("Knowledge base '{}' not found", kb_name),
-            format!("Create it with: `mald kb create {}`", kb_name),
+            format!("Knowledge base '{kb_name}' not found"),
+            format!("Create it with: `mald kb create {kb_name}`"),
         ));
     }
 
@@ -57,7 +57,7 @@ pub async fn run(query: &str, kb: Option<&str>) -> Result<()> {
 
     if matches.is_empty() {
         return Err(crate::errors::bail_ctx(
-            format!("No notes matching '{}' in kb '{}'", query, kb_name),
+            format!("No notes matching '{query}' in kb '{kb_name}'"),
             "Create a new note with: `mald new \"Title\"`",
         ));
     }
@@ -67,11 +67,11 @@ pub async fn run(query: &str, kb: Option<&str>) -> Result<()> {
         matches[0].1
     } else {
         // Multiple matches — show list and let user pick
-        println!("Multiple matches for '{}':\n", query);
+        println!("Multiple matches for '{query}':\n");
         let show = matches.len().min(15);
         for (i, (_, f)) in matches.iter().take(show).enumerate() {
             let stem = f.file_stem().unwrap().to_string_lossy();
-            println!("  [{}] {}", i, stem);
+            println!("  [{i}] {stem}");
         }
         if matches.len() > show {
             println!("  ... and {} more", matches.len() - show);

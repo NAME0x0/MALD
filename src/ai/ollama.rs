@@ -149,7 +149,7 @@ impl OllamaClient {
                     }
                     if let Some(status) = parsed.get("status").and_then(|v| v.as_str()) {
                         if status == "success" {
-                            bar.finish_with_message(format!("{} done", name));
+                            bar.finish_with_message(format!("{name} done"));
                         }
                     }
                 }
@@ -219,7 +219,7 @@ impl OllamaClient {
                 }
                 if let Ok(parsed) = serde_json::from_str::<StreamResponse>(line) {
                     let token = &parsed.message.content;
-                    print!("{}", token);
+                    print!("{token}");
                     std::io::stdout().flush().ok();
                     full_response.push_str(token);
                 }

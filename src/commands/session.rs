@@ -15,9 +15,7 @@ pub async fn start(kb: Option<&str>) -> Result<()> {
     let kb_path = mald_home().join("kb").join(&kb_name);
     if !kb_path.exists() {
         anyhow::bail!(
-            "Knowledge base '{}' not found. Create it with `mald kb create {}`",
-            kb_name,
-            kb_name
+            "Knowledge base '{kb_name}' not found. Create it with `mald kb create {kb_name}`"
         );
     }
 
@@ -50,7 +48,7 @@ pub async fn list() -> Result<()> {
                     println!("No active MALD sessions.");
                 } else {
                     for s in mald_sessions {
-                        println!("  {}", s);
+                        println!("  {s}");
                     }
                 }
             }
@@ -67,7 +65,7 @@ async fn start_tmux_session(
     kb_path: &std::path::Path,
     config: &ConfigManager,
 ) -> Result<()> {
-    let session_name = format!("mald-{}", kb_name);
+    let session_name = format!("mald-{kb_name}");
     let editor = config.get_string("editor").unwrap_or_else(|| "nvim".into());
     let home = mald_home();
 
@@ -96,7 +94,7 @@ async fn start_tmux_session(
         .args([
             "send-keys",
             "-t",
-            &format!("{}:editor", session_name),
+            &format!("{session_name}:editor"),
             &format!("{} {}", editor, kb_path.display()),
             "Enter",
         ])
@@ -117,7 +115,7 @@ async fn start_shell_session(
 ) -> Result<()> {
     let home = mald_home();
 
-    println!("MALD Session: {}", kb_name);
+    println!("MALD Session: {kb_name}");
     println!("Knowledge Base: {}", kb_path.display());
     println!("Type 'exit' to end session.\n");
 

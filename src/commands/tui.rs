@@ -368,7 +368,7 @@ impl EditorState {
                     self.cursor_col = remove_start;
                 }
                 // Insert the selected name + closing ]]
-                let insertion = format!("{}]]", selected);
+                let insertion = format!("{selected}]]");
                 let line = &mut self.lines[self.cursor_row];
                 let col = self.cursor_col.min(line.len());
                 line.insert_str(col, &insertion);
@@ -938,7 +938,7 @@ fn handle_tasks_key(key: KeyCode, state: &mut TasksState) -> Option<String> {
             if let Some(i) = state.selected.selected() {
                 if i < state.tasks.len() {
                     let (kb, note, _) = &state.tasks[i];
-                    let path = mald_home().join("kb").join(kb).join(format!("{}.md", note));
+                    let path = mald_home().join("kb").join(kb).join(format!("{note}.md"));
                     if path.exists() {
                         return Some(path.to_string_lossy().to_string());
                     }
@@ -963,7 +963,7 @@ impl SearchState {
         let fts_query: String = self
             .query
             .split_whitespace()
-            .map(|w| format!("{}*", w))
+            .map(|w| format!("{w}*"))
             .collect::<Vec<_>>()
             .join(" ");
         self.results = meta.fts_search(&fts_query, 20).unwrap_or_default();
@@ -1134,7 +1134,7 @@ fn draw_home(f: &mut Frame, home: &HomeState, area: Rect) {
     let kbs_text: String = home
         .kb_stats
         .iter()
-        .map(|(n, c)| format!("{}: {}", n, c))
+        .map(|(n, c)| format!("{n}: {c}"))
         .collect::<Vec<_>>()
         .join("  ");
     let top_text = format!(
@@ -1154,7 +1154,7 @@ fn draw_home(f: &mut Frame, home: &HomeState, area: Rect) {
     let recent_items: Vec<ListItem> = home
         .recent
         .iter()
-        .map(|r| ListItem::new(format!("  {}", r)))
+        .map(|r| ListItem::new(format!("  {r}")))
         .collect();
     let recent_list = List::new(if recent_items.is_empty() {
         vec![ListItem::new("  No recent files")]
@@ -1176,7 +1176,7 @@ fn draw_home(f: &mut Frame, home: &HomeState, area: Rect) {
                 .file_stem()
                 .map(|s| s.to_string_lossy().to_string())
                 .unwrap_or_default();
-            ListItem::new(format!("  [ ] {} ({})", task, stem))
+            ListItem::new(format!("  [ ] {task} ({stem})"))
         })
         .collect();
     let task_list = List::new(if task_items.is_empty() {
@@ -1287,7 +1287,7 @@ fn draw_browse(f: &mut Frame, state: &mut BrowseState, area: Rect) {
                 .unwrap_or(f)
                 .to_string_lossy()
                 .replace('\\', "/");
-            ListItem::new(format!("  {}", name))
+            ListItem::new(format!("  {name}"))
         })
         .collect();
     let list = List::new(items)
@@ -1311,7 +1311,7 @@ fn draw_tasks(f: &mut Frame, state: &mut TasksState, area: Rect) {
     let items: Vec<ListItem> = state
         .tasks
         .iter()
-        .map(|(kb, note, task)| ListItem::new(format!("  [ ] {} ({}/{})", task, kb, note)))
+        .map(|(kb, note, task)| ListItem::new(format!("  [ ] {task} ({kb}/{note})")))
         .collect();
     let list = List::new(if items.is_empty() {
         vec![ListItem::new("  No open tasks")]
@@ -1377,9 +1377,9 @@ fn draw_editor(f: &mut Frame, editor: &mut EditorState, area: Rect) {
                 .file_name()
                 .map(|s| s.to_string_lossy().to_string())
                 .unwrap_or_default();
-            format!(" {}{} ", name, modified_indicator)
+            format!(" {name}{modified_indicator} ")
         }
-        None => format!(" Editor{} ", modified_indicator),
+        None => format!(" Editor{modified_indicator} "),
     };
 
     let editor_widget =
@@ -1422,10 +1422,10 @@ fn draw_editor(f: &mut Frame, editor: &mut EditorState, area: Rect) {
         .iter()
         .map(|(name, ctx)| {
             let display = if ctx.is_empty() {
-                format!("  <- {}", name)
+                format!("  <- {name}")
             } else {
                 let short: String = ctx.chars().take(40).collect();
-                format!("  <- {} ({})", name, short)
+                format!("  <- {name} ({short})")
             };
             ListItem::new(display)
         })
@@ -1446,7 +1446,7 @@ fn draw_editor(f: &mut Frame, editor: &mut EditorState, area: Rect) {
     let fl_items: Vec<ListItem> = editor
         .forward_links
         .iter()
-        .map(|l| ListItem::new(format!("  -> [[{}]]", l)))
+        .map(|l| ListItem::new(format!("  -> [[{l}]]")))
         .collect();
     let fl_list = List::new(if fl_items.is_empty() {
         vec![ListItem::new("  (no links)")]
@@ -1467,7 +1467,7 @@ fn draw_editor(f: &mut Frame, editor: &mut EditorState, area: Rect) {
         editor
             .tags
             .iter()
-            .map(|t| format!("  #{}", t))
+            .map(|t| format!("  #{t}"))
             .collect::<Vec<_>>()
             .join("\n")
     };
@@ -1494,10 +1494,10 @@ fn draw_editor(f: &mut Frame, editor: &mut EditorState, area: Rect) {
                     .take(8)
                     .map(|(i, name)| {
                         if i == ac.selected {
-                            ListItem::new(format!(" > {}", name))
+                            ListItem::new(format!(" > {name}"))
                                 .style(Style::default().bg(Color::Cyan).fg(Color::Black))
                         } else {
-                            ListItem::new(format!("   {}", name))
+                            ListItem::new(format!("   {name}"))
                         }
                     })
                     .collect();

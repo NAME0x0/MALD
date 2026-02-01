@@ -17,7 +17,7 @@ pub async fn run(
     let doc = MarkdownDocument::parse(&content);
 
     if doc.code_blocks.is_empty() {
-        println!("No code blocks found in '{}'", note);
+        println!("No code blocks found in '{note}'");
         return Ok(());
     }
 
@@ -27,7 +27,7 @@ pub async fn run(
     } else {
         doc.code_blocks.len()
     };
-    println!("About to execute {} code block(s) from '{}'", total, note);
+    println!("About to execute {total} code block(s) from '{note}'");
     print!("Continue? [Y/n] ");
     use std::io::Write;
     std::io::stdout().flush()?;
@@ -62,7 +62,7 @@ pub async fn run(
             &block.language
         };
 
-        println!("--- [{}] block {} ---", lang, i);
+        println!("--- [{lang}] block {i} ---");
 
         match execute_block(lang, &block.content) {
             Ok(output) => {
@@ -77,7 +77,7 @@ pub async fn run(
                 }
                 if output.exit_code != 0 {
                     let msg = format!("(exit code: {})\n", output.exit_code);
-                    print!("{}", msg);
+                    print!("{msg}");
                     combined.push_str(&msg);
                 }
                 if save && !combined.is_empty() {
@@ -85,9 +85,9 @@ pub async fn run(
                 }
             }
             Err(e) => {
-                println!("Error: {}", e);
+                println!("Error: {e}");
                 if save {
-                    outputs.push((*i, format!("Error: {}\n", e)));
+                    outputs.push((*i, format!("Error: {e}\n")));
                 }
             }
         }
@@ -166,7 +166,7 @@ pub async fn list_blocks(note: &str, kb: Option<&str>) -> Result<()> {
     let doc = MarkdownDocument::parse(&content);
 
     if doc.code_blocks.is_empty() {
-        println!("No code blocks in '{}'", note);
+        println!("No code blocks in '{note}'");
         return Ok(());
     }
 
@@ -184,7 +184,7 @@ pub async fn list_blocks(note: &str, kb: Option<&str>) -> Result<()> {
             .chars()
             .take(60)
             .collect();
-        println!("  [{}] {} — {}", i, lang, preview);
+        println!("  [{i}] {lang} — {preview}");
     }
 
     Ok(())
@@ -221,7 +221,7 @@ fn execute_block(lang: &str, code: &str) -> Result<ExecOutput> {
         }
         _ => {
             return Ok(ExecOutput {
-                stdout: format!("(no executor for language: {})\n", lang),
+                stdout: format!("(no executor for language: {lang})\n"),
                 stderr: String::new(),
                 exit_code: 0,
             });
@@ -231,7 +231,7 @@ fn execute_block(lang: &str, code: &str) -> Result<ExecOutput> {
     let output = Command::new(cmd)
         .args(&args)
         .output()
-        .map_err(|e| anyhow::anyhow!("Failed to execute {}: {}", cmd, e))?;
+        .map_err(|e| anyhow::anyhow!("Failed to execute {cmd}: {e}"))?;
 
     Ok(ExecOutput {
         stdout: String::from_utf8_lossy(&output.stdout).to_string(),
@@ -253,7 +253,7 @@ fn run_rust_block(code: &str) -> Result<ExecOutput> {
     let full_code = if code.contains("fn main") {
         code.to_string()
     } else {
-        format!("fn main() {{\n{}\n}}", code)
+        format!("fn main() {{\n{code}\n}}")
     };
 
     std::fs::write(&src_path, &full_code)?;
@@ -299,7 +299,7 @@ fn resolve_note(note: &str, kb: Option<&str>) -> Result<std::path::PathBuf> {
     if exact.exists() {
         return Ok(exact);
     }
-    let with_ext = kb_path.join(format!("{}.md", note));
+    let with_ext = kb_path.join(format!("{note}.md"));
     if with_ext.exists() {
         return Ok(with_ext);
     }
@@ -315,5 +315,5 @@ fn resolve_note(note: &str, kb: Option<&str>) -> Result<std::path::PathBuf> {
             }
         }
     }
-    bail!("Note '{}' not found in kb '{}'", note, kb_name)
+    bail!("Note '{note}' not found in kb '{kb_name}'")
 }

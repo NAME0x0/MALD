@@ -37,8 +37,8 @@ pub async fn run(note: &str, kb: Option<&str>) -> Result<()> {
     }
 
     // Size
-    println!("  Words:        {}", word_count);
-    println!("  Lines:        {}", line_count);
+    println!("  Words:        {word_count}");
+    println!("  Lines:        {line_count}");
     println!("  Reading time: {} min", reading_time.max(1));
 
     // Tags
@@ -47,7 +47,7 @@ pub async fn run(note: &str, kb: Option<&str>) -> Result<()> {
             "  Tags:         {}",
             doc.tags
                 .iter()
-                .map(|t| format!("#{}", t))
+                .map(|t| format!("#{t}"))
                 .collect::<Vec<_>>()
                 .join(" ")
         );
@@ -90,7 +90,7 @@ pub async fn run(note: &str, kb: Option<&str>) -> Result<()> {
             }
         }
     }
-    println!("  Backlinks:    {}", backlink_count);
+    println!("  Backlinks:    {backlink_count}");
 
     // Code blocks
     if !doc.code_blocks.is_empty() {

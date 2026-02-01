@@ -12,7 +12,7 @@ fn resolve_kb(kb: Option<&str>) -> Result<std::path::PathBuf> {
         .unwrap_or_else(|| "personal".into());
     let kb_path = mald_home().join("kb").join(&kb_name);
     if !kb_path.exists() {
-        bail!("Knowledge base '{}' not found", kb_name);
+        bail!("Knowledge base '{kb_name}' not found");
     }
     Ok(kb_path)
 }
@@ -35,9 +35,9 @@ pub async fn links(note: &str, kb: Option<&str>) -> Result<()> {
         Some(doc) => {
             let all = doc.all_links();
             if all.is_empty() {
-                println!("No outgoing links from '{}'", note);
+                println!("No outgoing links from '{note}'");
             } else {
-                println!("Links from '{}':\n", note);
+                println!("Links from '{note}':\n");
                 for link in all {
                     // Check if target exists
                     let exists = docs.iter().any(|d| {
@@ -48,12 +48,12 @@ pub async fn links(note: &str, kb: Option<&str>) -> Result<()> {
                             .unwrap_or(false)
                     });
                     let marker = if exists { " " } else { "?" };
-                    println!("  {} {}", marker, link);
+                    println!("  {marker} {link}");
                 }
             }
         }
         None => {
-            bail!("Note '{}' not found in knowledge base", note);
+            bail!("Note '{note}' not found in knowledge base");
         }
     }
     Ok(())
@@ -65,9 +65,9 @@ pub async fn backlinks(note: &str, kb: Option<&str>) -> Result<()> {
     let results = graph::find_backlinks(&docs, note);
 
     if results.is_empty() {
-        println!("No backlinks to '{}'", note);
+        println!("No backlinks to '{note}'");
     } else {
-        println!("Backlinks to '{}':\n", note);
+        println!("Backlinks to '{note}':\n");
         for doc in results {
             let name = doc
                 .path
@@ -80,7 +80,7 @@ pub async fn backlinks(note: &str, kb: Option<&str>) -> Result<()> {
                 .as_ref()
                 .map(|p| p.display().to_string())
                 .unwrap_or_default();
-            println!("  {} ({})", name, path);
+            println!("  {name} ({path})");
         }
     }
     Ok(())
@@ -107,7 +107,7 @@ pub async fn orphans(kb: Option<&str>) -> Result<()> {
                 .as_ref()
                 .map(|p| p.display().to_string())
                 .unwrap_or_default();
-            println!("  {} ({})", name, path);
+            println!("  {name} ({path})");
         }
     }
     Ok(())
@@ -124,7 +124,7 @@ pub async fn broken_links(kb: Option<&str>) -> Result<()> {
     } else {
         println!("Broken links ({}):\n", broken.len());
         for (source, target) in &broken {
-            println!("  {} -> [[{}]]", source, target);
+            println!("  {source} -> [[{target}]]");
         }
     }
     Ok(())
@@ -149,7 +149,7 @@ pub async fn view(kb: Option<&str>) -> Result<()> {
             .unwrap_or_else(|| doc.title.clone());
         let id = mermaid_id(&name);
         if seen.insert(id.clone()) {
-            println!("    {}[{}]", id, name);
+            println!("    {id}[{name}]");
         }
         for link in doc.all_links() {
             let link_id = mermaid_id(link);
@@ -162,9 +162,9 @@ pub async fn view(kb: Option<&str>) -> Result<()> {
                     .unwrap_or(false)
             });
             if !exists && seen.insert(link_id.clone()) {
-                println!("    {}[{}]:::broken", link_id, link);
+                println!("    {link_id}[{link}]:::broken");
             }
-            println!("    {} --> {}", id, link_id);
+            println!("    {id} --> {link_id}");
         }
     }
     println!("    classDef broken fill:#f99,stroke:#f00");
@@ -191,15 +191,15 @@ pub async fn stats(kb: Option<&str>) -> Result<()> {
     }
 
     println!("Graph stats:\n");
-    println!("  Notes:        {}", total_notes);
-    println!("  Links:        {}", total_links);
+    println!("  Notes:        {total_notes}");
+    println!("  Links:        {total_links}");
     println!("  Unique tags:  {}", tag_count.len());
-    println!("  Orphans:      {}", orphans);
-    println!("  Broken links: {}", broken);
+    println!("  Orphans:      {orphans}");
+    println!("  Broken links: {broken}");
 
     if total_notes > 0 {
         let avg_links = total_links as f64 / total_notes as f64;
-        println!("  Avg links:    {:.1}", avg_links);
+        println!("  Avg links:    {avg_links:.1}");
     }
 
     Ok(())

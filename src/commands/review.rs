@@ -16,7 +16,7 @@ pub async fn run(kb: Option<&str>, days: u64) -> Result<()> {
     let kb_path = home.join("kb").join(&kb_name);
 
     if !kb_path.exists() {
-        println!("Knowledge base '{}' not found.", kb_name);
+        println!("Knowledge base '{kb_name}' not found.");
         return Ok(());
     }
 
@@ -80,17 +80,17 @@ pub async fn run(kb: Option<&str>, days: u64) -> Result<()> {
 
     // Recent activity
     if recent.is_empty() {
-        println!("No activity in the last {} days.\n", days);
+        println!("No activity in the last {days} days.\n");
     } else {
-        println!("Modified (last {} days):", days);
+        println!("Modified (last {days} days):");
         for (name, age) in &recent {
             let d = age / (24 * 3600);
             let label = if d == 0 {
                 "today".to_string()
             } else {
-                format!("{}d ago", d)
+                format!("{d}d ago")
             };
-            println!("  {} ({})", name, label);
+            println!("  {name} ({label})");
         }
         println!();
     }
@@ -99,7 +99,7 @@ pub async fn run(kb: Option<&str>, days: u64) -> Result<()> {
     if !open_tasks.is_empty() {
         println!("Open tasks ({}):", open_tasks.len());
         for (note, task) in open_tasks.iter().take(10) {
-            println!("  [ ] {} ({})", task, note);
+            println!("  [ ] {task} ({note})");
         }
         if open_tasks.len() > 10 {
             println!("  ... {} more", open_tasks.len() - 10);
@@ -111,7 +111,7 @@ pub async fn run(kb: Option<&str>, days: u64) -> Result<()> {
     if !stale.is_empty() {
         println!("Stale notes (>90 days untouched):");
         for (name, age_days) in stale.iter().take(10) {
-            println!("  {} ({}d)", name, age_days);
+            println!("  {name} ({age_days}d)");
         }
         if stale.len() > 10 {
             println!("  ... {} more", stale.len() - 10);
@@ -131,7 +131,7 @@ pub async fn run(kb: Option<&str>, days: u64) -> Result<()> {
                 .and_then(|p| p.file_stem())
                 .map(|s| s.to_string_lossy().to_string())
                 .unwrap_or_else(|| doc.title.clone());
-            println!("  {}", name);
+            println!("  {name}");
         }
         if orphans.len() > 10 {
             println!("  ... {} more", orphans.len() - 10);
@@ -144,7 +144,7 @@ pub async fn run(kb: Option<&str>, days: u64) -> Result<()> {
     if !broken.is_empty() {
         println!("Broken links ({}):", broken.len());
         for (source, target) in broken.iter().take(10) {
-            println!("  {} -> [[{}]]", source, target);
+            println!("  {source} -> [[{target}]]");
         }
         if broken.len() > 10 {
             println!("  ... {} more", broken.len() - 10);

@@ -7,9 +7,8 @@ pub async fn run(name: &str, args: &[String]) -> Result<()> {
     let plugin_dir = mald_home().join("plugins");
     if !plugin_dir.exists() {
         anyhow::bail!(
-            "Plugin '{}' not found. No plugins directory exists.\n\
-             Create plugins in ~/.mald/plugins/ — any executable becomes `mald x-<name>`.",
-            name
+            "Plugin '{name}' not found. No plugins directory exists.\n\
+             Create plugins in ~/.mald/plugins/ — any executable becomes `mald x-<name>`."
         );
     }
 
@@ -41,7 +40,7 @@ pub async fn run(name: &str, args: &[String]) -> Result<()> {
                     name,
                     available
                         .iter()
-                        .map(|n| format!("  mald x-{}", n))
+                        .map(|n| format!("  mald x-{n}"))
                         .collect::<Vec<_>>()
                         .join("\n")
                 );
@@ -65,7 +64,7 @@ pub async fn list() -> Result<()> {
     } else {
         println!("Installed plugins:\n");
         for name in &plugins {
-            println!("  mald x-{}", name);
+            println!("  mald x-{name}");
         }
     }
     Ok(())

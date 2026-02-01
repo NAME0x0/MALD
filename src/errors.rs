@@ -35,7 +35,7 @@ impl ContextualError {
         if let Some(ref topic) = self.help_topic {
             eprintln!(
                 "  {}",
-                format!("Run `mald help-topic {}` for more info", topic).dark_grey()
+                format!("Run `mald help-topic {topic}` for more info").dark_grey()
             );
         }
         eprintln!("  {}", "Run `mald doctor` to check your setup.".dark_grey());

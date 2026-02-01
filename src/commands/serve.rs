@@ -15,16 +15,13 @@ pub async fn run(kb: Option<&str>, port: u16) -> Result<()> {
     let kb_path = mald_home().join("kb").join(&kb_name);
 
     if !kb_path.exists() {
-        bail!("Knowledge base '{}' not found", kb_name);
+        bail!("Knowledge base '{kb_name}' not found");
     }
 
-    let addr = format!("127.0.0.1:{}", port);
+    let addr = format!("127.0.0.1:{port}");
     let listener = tokio::net::TcpListener::bind(&addr).await?;
-    println!("Serving '{}' at http://{}", kb_name, addr);
-    println!(
-        "API: POST http://{}/api/capture  {{\"text\": \"...\"}}",
-        addr
-    );
+    println!("Serving '{kb_name}' at http://{addr}");
+    println!("API: POST http://{addr}/api/capture  {{\"text\": \"...\"}}");
     println!("Press Ctrl+C to stop.\n");
 
     loop {
@@ -62,7 +59,7 @@ async fn handle_connection(
             Ok(html) => ("200 OK", html, "text/html; charset=utf-8"),
             Err(e) => (
                 "500 Internal Server Error",
-                format!("Error: {}", e),
+                format!("Error: {e}"),
                 "text/plain",
             ),
         }
@@ -73,8 +70,7 @@ async fn handle_connection(
             None => (
                 "404 Not Found",
                 format!(
-                    "<html><body><h1>404</h1><p>Note '{}' not found.</p><p><a href=\"/\">Back</a></p></body></html>",
-                    note_name
+                    "<html><body><h1>404</h1><p>Note '{note_name}' not found.</p><p><a href=\"/\">Back</a></p></body></html>"
                 ),
                 "text/html; charset=utf-8",
             ),
@@ -131,13 +127,13 @@ fn handle_capture(
 
             // Append to today's daily note
             let today = chrono::Local::now().format("%Y-%m-%d").to_string();
-            let filename = format!("{}.md", today);
+            let filename = format!("{today}.md");
             let path = kb_path.join(&filename);
 
             let entry = if tag.is_empty() {
-                format!("- {}\n", text)
+                format!("- {text}\n")
             } else {
-                format!("- {} #{}\n", text, tag)
+                format!("- {text} #{tag}\n")
             };
 
             if path.exists() {
@@ -150,20 +146,19 @@ fn handle_capture(
                 if let Err(e) = std::fs::write(&path, content) {
                     return (
                         "500 Internal Server Error",
-                        format!(r#"{{"error": "{}"}}"#, e),
+                        format!(r#"{{"error": "{e}"}}"#),
                         "application/json",
                     );
                 }
             } else {
                 // Create daily note
                 let content = format!(
-                    "---\ntitle: {}\ntags: [daily]\ncreated: {}\n---\n\n# {}\n\n{}",
-                    today, today, today, entry
+                    "---\ntitle: {today}\ntags: [daily]\ncreated: {today}\n---\n\n# {today}\n\n{entry}"
                 );
                 if let Err(e) = std::fs::write(&path, content) {
                     return (
                         "500 Internal Server Error",
-                        format!(r#"{{"error": "{}"}}"#, e),
+                        format!(r#"{{"error": "{e}"}}"#),
                         "application/json",
                     );
                 }
@@ -171,13 +166,13 @@ fn handle_capture(
 
             (
                 "200 OK",
-                format!(r#"{{"ok": true, "file": "{}"}}"#, filename),
+                format!(r#"{{"ok": true, "file": "{filename}"}}"#),
                 "application/json",
             )
         }
         Err(e) => (
             "400 Bad Request",
-            format!(r#"{{"error": "Invalid JSON: {}"}}"#, e),
+            format!(r#"{{"error": "Invalid JSON: {e}"}}"#),
             "application/json",
         ),
     }
@@ -198,7 +193,7 @@ fn render_index(kb_path: &std::path::Path, kb_name: &str) -> Result<String> {
 
     let mut list = String::new();
     for (stem, title) in &entries {
-        list.push_str(&format!("<li><a href=\"/{}\">{}</a></li>\n", stem, title));
+        list.push_str(&format!("<li><a href=\"/{stem}\">{title}</a></li>\n"));
     }
 
     Ok(format!(
@@ -230,7 +225,7 @@ fn render_note(kb_path: &std::path::Path, name: &str) -> Option<String> {
         .replace_all(&body, |caps: &regex::Captures| {
             let target = &caps[1];
             let slug = target.to_lowercase().replace(' ', "-");
-            format!("<a href=\"/{}\">{}</a>", slug, target)
+            format!("<a href=\"/{slug}\">{target}</a>")
         })
         .to_string();
 

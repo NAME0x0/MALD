@@ -29,7 +29,7 @@ pub fn update_modified_timestamp(path: &Path) -> Result<bool> {
             .lines()
             .map(|line| {
                 if line.trim_start().starts_with("modified:") {
-                    format!("modified: {}", now)
+                    format!("modified: {now}")
                 } else {
                     line.to_string()
                 }
@@ -41,7 +41,7 @@ pub fn update_modified_timestamp(path: &Path) -> Result<bool> {
         format!("{}\nmodified: {}", yaml_section.trim_end(), now)
     };
 
-    let new_content = format!("---{}---{}", new_yaml, body);
+    let new_content = format!("---{new_yaml}---{body}");
 
     // Only write if content actually changed (avoid infinite watcher loop)
     if new_content != content {
