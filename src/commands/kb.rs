@@ -29,25 +29,50 @@ pub async fn create(name: &str) -> Result<()> {
     Ok(())
 }
 
-pub async fn list() -> Result<()> {
+pub async fn list(json: bool) -> Result<()> {
     let kb_dir = mald_home().join("kb");
     if !kb_dir.exists() {
-        println!("No knowledge bases found. Run `mald init` first.");
+        if json {
+            println!("[]");
+        } else {
+            println!("No knowledge bases found. Run `mald init` first.");
+        }
         return Ok(());
     }
 
+    let config_path = mald_home().join("config").join("config.json");
+    let config = ConfigManager::load(&config_path)?;
+    let default_kb = config
+        .get_string("default_kb")
+        .unwrap_or_else(|| "personal".into());
+
+    let mut kbs: Vec<serde_json::Value> = Vec::new();
     let mut count = 0;
+
     for entry in std::fs::read_dir(&kb_dir)? {
         let entry = entry?;
         if entry.file_type()?.is_dir() {
             let name = entry.file_name().to_string_lossy().to_string();
             let files = crate::fs::find_files(&entry.path(), "md")?;
-            println!("  {} ({} files)", name, files.len());
+            let is_default = name == default_kb;
+            if json {
+                kbs.push(serde_json::json!({
+                    "name": name,
+                    "notes": files.len(),
+                    "path": entry.path().to_string_lossy(),
+                    "default": is_default,
+                }));
+            } else {
+                let marker = if is_default { " *" } else { "" };
+                println!("  {} ({} files){}", name, files.len(), marker);
+            }
             count += 1;
         }
     }
 
-    if count == 0 {
+    if json {
+        println!("{}", serde_json::to_string_pretty(&kbs)?);
+    } else if count == 0 {
         println!("No knowledge bases found. Create one with `mald kb create <name>`.");
     }
     Ok(())

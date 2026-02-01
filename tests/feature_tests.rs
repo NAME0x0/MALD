@@ -43,14 +43,15 @@ fn test_dashboard_after_init() {
 }
 
 #[test]
-fn test_tasks_empty() {
+fn test_tasks_default_kb() {
     let dir = setup_mald_home();
+    // Init creates a sample note with tasks
     mald_cmd()
         .env("MALD_HOME", dir.path())
         .arg("tasks")
         .assert()
         .success()
-        .stdout(predicate::str::contains("No open tasks"));
+        .stdout(predicate::str::contains("Create your first note"));
 }
 
 #[test]
@@ -70,7 +71,8 @@ fn test_tasks_finds_checkboxes() {
         .success()
         .stdout(predicate::str::contains("Buy milk"))
         .stdout(predicate::str::contains("Fix bug"))
-        .stdout(predicate::str::contains("2 open, 1 done"));
+        // 5 open (3 from sample + 2 from test note), 1 done
+        .stdout(predicate::str::contains("5 open, 1 done"));
 }
 
 #[test]
@@ -236,6 +238,91 @@ fn test_serve_missing_kb() {
         .assert()
         .failure()
         .stderr(predicate::str::contains("not found"));
+}
+
+// --- JSON output tests ---
+
+#[test]
+fn test_search_json_output() {
+    let dir = setup_mald_home();
+    mald_cmd()
+        .env("MALD_HOME", dir.path())
+        .arg("search")
+        .arg("getting started")
+        .arg("--json")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("["))
+        .stdout(predicate::str::contains("\"type\""));
+}
+
+#[test]
+fn test_tasks_json_output() {
+    let dir = setup_mald_home();
+    let note_path = dir.path().join("kb").join("personal").join("json-tasks.md");
+    fs::write(&note_path, "- [ ] JSON task\n- [x] Done\n").unwrap();
+
+    mald_cmd()
+        .env("MALD_HOME", dir.path())
+        .arg("tasks")
+        .arg("--json")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"task\""))
+        .stdout(predicate::str::contains("JSON task"));
+}
+
+#[test]
+fn test_tags_json_output() {
+    let dir = setup_mald_home();
+    // The default init note has #mald and #guide tags
+    mald_cmd()
+        .env("MALD_HOME", dir.path())
+        .arg("tags")
+        .arg("--json")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("{"))
+        .stdout(predicate::str::contains("\"count\""));
+}
+
+#[test]
+fn test_kb_list_json_output() {
+    let dir = setup_mald_home();
+    mald_cmd()
+        .env("MALD_HOME", dir.path())
+        .arg("kb")
+        .arg("list")
+        .arg("--json")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("["))
+        .stdout(predicate::str::contains("\"name\""))
+        .stdout(predicate::str::contains("personal"));
+}
+
+#[test]
+fn test_init_creates_searchable_sample() {
+    let dir = setup_mald_home();
+    // The init sample note should be findable
+    mald_cmd()
+        .env("MALD_HOME", dir.path())
+        .arg("search")
+        .arg("getting started")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Getting Started"));
+}
+
+#[test]
+fn test_init_sample_has_tasks() {
+    let dir = setup_mald_home();
+    mald_cmd()
+        .env("MALD_HOME", dir.path())
+        .arg("tasks")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Create your first note"));
 }
 
 #[test]

@@ -4,27 +4,34 @@ use crate::config::ConfigManager;
 use crate::fs::{ensure_directory, mald_home};
 
 const DEFAULT_KB_INDEX: &str = r#"---
-title: Personal
+title: Getting Started
 created: 2024-01-01
-tags: []
+tags: [mald, guide]
 ---
 
-# Personal Knowledge Base
+# Getting Started with MALD
 
-Welcome to your MALD knowledge base.
+Welcome to your knowledge base. Here are the essentials:
 
-## Getting Started
+## Core Workflow
 
-- Create new notes with `mald new "Title"`
-- Open today's daily note with `mald today`
-- Use [[wikilinks]] to connect ideas
-- Tag notes with #hashtags
-- Use `mald search` for interactive fuzzy search
+- Create notes: `mald new "Title"`
+- Quick capture: `mald q "thought"`
+- Search: `mald search "query"`
+- Daily note: `mald today`
 
-## Quick Links
+## Connecting Ideas
+
+Link notes with [[wikilinks]] and organize with #hashtags.
 
 - [[inbox]] — capture fleeting thoughts
 - [[projects]] — active project notes
+
+## Tasks
+
+- [ ] Create your first note with `mald new "My First Note"`
+- [ ] Try quick capture: `mald q "hello world"`
+- [ ] Search your notes: `mald search "getting started"`
 "#;
 
 pub async fn run() -> Result<()> {

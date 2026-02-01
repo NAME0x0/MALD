@@ -11,7 +11,7 @@ pub struct Cli {
 #[derive(Subcommand)]
 pub enum Command {
     /// Interactive setup wizard
-    #[command(after_help = "Examples:\n  mald setup")]
+    #[command(hide = true, after_help = "Examples:\n  mald setup")]
     Setup,
 
     /// Initialize MALD directory structure
@@ -84,7 +84,7 @@ pub enum Command {
     },
 
     /// Search notes (all KBs, no args = interactive TUI)
-    #[command(after_help = "Examples:\n  mald search \"rust async\"\n  mald search \"meeting\" --since 7d\n  mald search            # opens interactive TUI")]
+    #[command(after_help = "Examples:\n  mald search \"rust async\"\n  mald search \"meeting\" --since 7d\n  mald search --json     # JSON output for scripts\n  mald search            # opens interactive TUI")]
     Search {
         query: Option<String>,
         #[arg(short, long, default_value = "10")]
@@ -92,6 +92,9 @@ pub enum Command {
         /// Filter by date (YYYY-MM-DD or Nd for last N days)
         #[arg(long)]
         since: Option<String>,
+        /// Output as JSON (for scripts and integrations)
+        #[arg(long)]
+        json: bool,
     },
 
     /// Show outgoing links from a note
@@ -117,21 +120,27 @@ pub enum Command {
     },
 
     /// List all tags or filter notes by tag
-    #[command(after_help = "Examples:\n  mald tags           # list all tags\n  mald tags rust      # notes tagged #rust")]
+    #[command(after_help = "Examples:\n  mald tags           # list all tags\n  mald tags rust      # notes tagged #rust\n  mald tags --json    # JSON output")]
     Tags {
         tag: Option<String>,
         #[arg(short, long)]
         kb: Option<String>,
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
     },
 
     /// Aggregate open tasks from all notes
-    #[command(after_help = "Examples:\n  mald tasks\n  mald tasks --kb work\n  mald tasks --all")]
+    #[command(after_help = "Examples:\n  mald tasks\n  mald tasks --kb work\n  mald tasks --all\n  mald tasks --json")]
     Tasks {
         #[arg(short, long)]
         kb: Option<String>,
         /// Search across all KBs
         #[arg(short, long)]
         all: bool,
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
     },
 
     /// Weekly/daily review: recent activity, stale notes, orphans, broken links
@@ -191,7 +200,7 @@ pub enum Command {
         flatten: bool,
     },
 
-    /// Serve KB as read-only local website
+    /// Serve KB as local website (with capture API)
     #[command(after_help = "Examples:\n  mald serve\n  mald serve --port 8080\n  mald serve --kb work")]
     Serve {
         #[arg(short, long)]
@@ -220,7 +229,8 @@ pub enum Command {
         action: GraphAction,
     },
 
-    /// Session management
+    /// Session management (tmux/shell)
+    #[command(hide = true)]
     Session {
         #[command(subcommand)]
         action: SessionAction,
@@ -261,7 +271,7 @@ pub enum Command {
     Doctor,
 
     /// Benchmark HNSW vector index performance
-    #[command(after_help = "Examples:\n  mald bench\n  mald bench --dim 768 --count 5000")]
+    #[command(hide = true, after_help = "Examples:\n  mald bench\n  mald bench --dim 768 --count 5000")]
     Bench {
         #[arg(short, long, default_value = "384")]
         dim: usize,
@@ -270,13 +280,13 @@ pub enum Command {
     },
 
     /// Generate shell completions
-    #[command(after_help = "Examples:\n  mald completions bash >> ~/.bashrc\n  mald completions zsh > ~/.zfunc/_mald\n  mald completions powershell >> $PROFILE")]
+    #[command(hide = true, after_help = "Examples:\n  mald completions bash >> ~/.bashrc\n  mald completions zsh > ~/.zfunc/_mald\n  mald completions powershell >> $PROFILE")]
     Completions {
         shell: Shell,
     },
 
     /// Manage plugins
-    #[command(after_help = "Examples:\n  mald plugin list\n  mald plugin run my-script")]
+    #[command(hide = true, after_help = "Examples:\n  mald plugin list\n  mald plugin run my-script")]
     Plugin {
         #[command(subcommand)]
         action: PluginAction,
@@ -297,7 +307,11 @@ pub enum KbAction {
     #[command(after_help = "Examples:\n  mald kb create work")]
     Create { name: String },
     /// List all knowledge bases
-    List,
+    List {
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
     /// Open a knowledge base in editor
     Open { name: String },
 }
@@ -474,12 +488,17 @@ pub async fn run(cli: Cli) -> anyhow::Result<()> {
         }
         Some(Command::Kb { action }) => match action {
             KbAction::Create { name } => crate::commands::kb::create(&name).await,
-            KbAction::List => crate::commands::kb::list().await,
+            KbAction::List { json } => crate::commands::kb::list(json).await,
             KbAction::Open { name } => crate::commands::kb::open(&name).await,
         },
-        Some(Command::Search { query, k, since }) => match query {
-            Some(q) => crate::commands::search::run(&q, k, since.as_deref()).await,
-            None => crate::commands::search::interactive(),
+        Some(Command::Search { query, k, since, json }) => match query {
+            Some(q) => crate::commands::search::run(&q, k, since.as_deref(), json).await,
+            None => {
+                if json {
+                    anyhow::bail!("--json requires a query. Usage: mald search \"query\" --json")
+                }
+                crate::commands::search::interactive()
+            }
         },
         Some(Command::Links { note, kb }) => {
             crate::commands::graph::links(&note, kb.as_deref()).await
@@ -488,12 +507,12 @@ pub async fn run(cli: Cli) -> anyhow::Result<()> {
             crate::commands::graph::backlinks(&note, kb.as_deref()).await
         }
         Some(Command::Orphans { kb }) => crate::commands::graph::orphans(kb.as_deref()).await,
-        Some(Command::Tags { tag, kb }) => match tag {
-            Some(t) => crate::commands::tags::filter(&t, kb.as_deref()).await,
-            None => crate::commands::tags::list(kb.as_deref()).await,
+        Some(Command::Tags { tag, kb, json }) => match tag {
+            Some(t) => crate::commands::tags::filter(&t, kb.as_deref(), json).await,
+            None => crate::commands::tags::list(kb.as_deref(), json).await,
         },
-        Some(Command::Tasks { kb, all }) => {
-            crate::commands::tasks::list(kb.as_deref(), all).await
+        Some(Command::Tasks { kb, all, json }) => {
+            crate::commands::tasks::list(kb.as_deref(), all, json).await
         }
         Some(Command::Review { kb, days }) => {
             crate::commands::review::run(kb.as_deref(), days).await

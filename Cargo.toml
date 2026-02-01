@@ -2,9 +2,10 @@
 name = "mald"
 version = "0.1.0"
 edition = "2021"
+authors = ["NAME0x0"]
 description = "Markdown Archive & Localized Daemon — terminal-first PKM with local AI"
 license = "MIT"
-repository = "https://github.com/afsahk/MALD"
+repository = "https://github.com/NAME0x0/MALD"
 keywords = ["pkm", "knowledge-management", "markdown", "ai", "cli"]
 categories = ["command-line-utilities"]
 readme = "README.md"

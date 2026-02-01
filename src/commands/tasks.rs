@@ -4,12 +4,16 @@ use crate::config::ConfigManager;
 use crate::fs::mald_home;
 
 /// Aggregate all open tasks (`- [ ]`) across all notes.
-pub async fn list(kb: Option<&str>, all_kbs: bool) -> Result<()> {
+pub async fn list(kb: Option<&str>, all_kbs: bool, json: bool) -> Result<()> {
     let home = mald_home();
     let kb_dir = home.join("kb");
 
     if !kb_dir.exists() {
-        println!("No knowledge bases found. Run `mald init` first.");
+        if json {
+            println!("[]");
+        } else {
+            println!("No knowledge bases found. Run `mald init` first.");
+        }
         return Ok(());
     }
 
@@ -28,7 +32,11 @@ pub async fn list(kb: Option<&str>, all_kbs: bool) -> Result<()> {
             .unwrap_or_else(|| "personal".into());
         let p = kb_dir.join(&kb_name);
         if !p.exists() {
-            println!("Knowledge base '{}' not found.", kb_name);
+            if json {
+                println!("[]");
+            } else {
+                println!("Knowledge base '{}' not found.", kb_name);
+            }
             return Ok(());
         }
         vec![p]
@@ -36,6 +44,7 @@ pub async fn list(kb: Option<&str>, all_kbs: bool) -> Result<()> {
 
     let mut total = 0usize;
     let mut done = 0usize;
+    let mut all_tasks: Vec<serde_json::Value> = Vec::new();
 
     for dir in &dirs {
         let kb_name = dir
@@ -56,7 +65,15 @@ pub async fn list(kb: Option<&str>, all_kbs: bool) -> Result<()> {
                     if trimmed.starts_with("- [ ] ") {
                         let task = trimmed[6..].trim().to_string();
                         if !task.is_empty() {
-                            kb_tasks.push((note.clone(), task));
+                            kb_tasks.push((note.clone(), task.clone()));
+                            if json {
+                                all_tasks.push(serde_json::json!({
+                                    "task": task,
+                                    "note": note,
+                                    "kb": kb_name,
+                                    "done": false,
+                                }));
+                            }
                             total += 1;
                         }
                     } else if trimmed.starts_with("- [x] ") || trimmed.starts_with("- [X] ") {
@@ -66,7 +83,7 @@ pub async fn list(kb: Option<&str>, all_kbs: bool) -> Result<()> {
             }
         }
 
-        if !kb_tasks.is_empty() {
+        if !json && !kb_tasks.is_empty() {
             if dirs.len() > 1 {
                 println!("[{}]", kb_name);
             }
@@ -79,7 +96,9 @@ pub async fn list(kb: Option<&str>, all_kbs: bool) -> Result<()> {
         }
     }
 
-    if total == 0 {
+    if json {
+        println!("{}", serde_json::to_string_pretty(&all_tasks)?);
+    } else if total == 0 {
         println!("No open tasks.");
     } else {
         println!("\n{} open, {} done", total, done);

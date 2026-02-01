@@ -6,8 +6,7 @@ use crate::index::hnsw::HnswIndex;
 use crate::index::metadata::MetadataStore;
 
 /// Search with optional date filter. `since` can be "YYYY-MM-DD" or "Nd" (e.g. "30d").
-/// If `all_kbs` is true, rebuild/ensure the index covers all KBs first.
-pub async fn run(query: &str, k: usize, since: Option<&str>) -> Result<()> {
+pub async fn run(query: &str, k: usize, since: Option<&str>, json: bool) -> Result<()> {
     // Ensure all KBs are indexed
     let kb_dir = mald_home().join("kb");
     if kb_dir.exists() {
@@ -18,7 +17,11 @@ pub async fn run(query: &str, k: usize, since: Option<&str>) -> Result<()> {
     let meta_path = index_dir.join("metadata.db");
 
     if !meta_path.exists() {
-        println!("No knowledge bases indexed. Run `mald init` first.");
+        if json {
+            println!("[]");
+        } else {
+            println!("No knowledge bases indexed. Run `mald init` first.");
+        }
         return Ok(());
     }
 
@@ -43,20 +46,39 @@ pub async fn run(query: &str, k: usize, since: Option<&str>) -> Result<()> {
                     if let Ok(index) = HnswIndex::load(&hnsw_path) {
                         let results = index.search(&query_vec, k);
                         if !results.is_empty() {
-                            println!("Semantic search results for: {}\n", query);
-                            for (i, (id, score)) in results.iter().enumerate() {
-                                if let Some(chunk) = meta.get_chunk(*id)? {
-                                    println!(
-                                        "{}. [score: {:.3}] {} (lines {}-{})",
-                                        i + 1,
-                                        score,
-                                        chunk.doc_path,
-                                        chunk.start_line,
-                                        chunk.end_line,
-                                    );
-                                    let preview: String =
-                                        chunk.content.chars().take(200).collect();
-                                    println!("   {}\n", preview.replace('\n', " "));
+                            if json {
+                                let items: Vec<serde_json::Value> = results
+                                    .iter()
+                                    .filter_map(|(id, score)| {
+                                        meta.get_chunk(*id).ok().flatten().map(|chunk| {
+                                            serde_json::json!({
+                                                "type": "semantic",
+                                                "score": score,
+                                                "path": chunk.doc_path,
+                                                "start_line": chunk.start_line,
+                                                "end_line": chunk.end_line,
+                                                "snippet": chunk.content.chars().take(200).collect::<String>(),
+                                            })
+                                        })
+                                    })
+                                    .collect();
+                                println!("{}", serde_json::to_string_pretty(&items)?);
+                            } else {
+                                println!("Semantic search results for: {}\n", query);
+                                for (i, (id, score)) in results.iter().enumerate() {
+                                    if let Some(chunk) = meta.get_chunk(*id)? {
+                                        println!(
+                                            "{}. [score: {:.3}] {} (lines {}-{})",
+                                            i + 1,
+                                            score,
+                                            chunk.doc_path,
+                                            chunk.start_line,
+                                            chunk.end_line,
+                                        );
+                                        let preview: String =
+                                            chunk.content.chars().take(200).collect();
+                                        println!("   {}\n", preview.replace('\n', " "));
+                                    }
                                 }
                             }
                             return Ok(());
@@ -74,7 +96,20 @@ pub async fn run(query: &str, k: usize, since: Option<&str>) -> Result<()> {
         meta.fts_search(query, k)?
     };
 
-    if results.is_empty() {
+    if json {
+        let items: Vec<serde_json::Value> = results
+            .iter()
+            .map(|r| {
+                serde_json::json!({
+                    "type": "fts",
+                    "path": r.path,
+                    "title": r.title,
+                    "snippet": r.snippet,
+                })
+            })
+            .collect();
+        println!("{}", serde_json::to_string_pretty(&items)?);
+    } else if results.is_empty() {
         println!("No results for: {}", query);
     } else {
         let label = if since_date.is_some() {

@@ -6,8 +6,23 @@ use crate::fs::mald_home;
 use crate::parser::MarkdownDocument;
 
 /// List all tags across all notes, with counts.
-pub async fn list(kb: Option<&str>) -> Result<()> {
+pub async fn list(kb: Option<&str>, json: bool) -> Result<()> {
     let tag_map = collect_tags(kb)?;
+
+    if json {
+        let obj: serde_json::Value = tag_map
+            .iter()
+            .map(|(tag, files)| {
+                (
+                    tag.clone(),
+                    serde_json::json!({ "count": files.len(), "notes": files }),
+                )
+            })
+            .collect::<serde_json::Map<String, serde_json::Value>>()
+            .into();
+        println!("{}", serde_json::to_string_pretty(&obj)?);
+        return Ok(());
+    }
 
     if tag_map.is_empty() {
         println!("No tags found.");
@@ -26,27 +41,42 @@ pub async fn list(kb: Option<&str>) -> Result<()> {
 }
 
 /// Show all notes with a specific tag.
-pub async fn filter(tag: &str, kb: Option<&str>) -> Result<()> {
+pub async fn filter(tag: &str, kb: Option<&str>, json: bool) -> Result<()> {
     let tag_map = collect_tags(kb)?;
 
     let clean_tag = tag.trim_start_matches('#');
     match tag_map.get(clean_tag) {
         Some(files) => {
-            println!("Notes tagged #{}:\n", clean_tag);
-            for f in files {
-                println!("  {}", f);
+            if json {
+                println!("{}", serde_json::to_string_pretty(files)?);
+            } else {
+                println!("Notes tagged #{}:\n", clean_tag);
+                for f in files {
+                    println!("  {}", f);
+                }
             }
         }
         None => {
-            println!("No notes tagged #{}", clean_tag);
+            if json {
+                println!("[]");
+            } else {
+                println!("No notes tagged #{}", clean_tag);
 
-            // Suggest similar tags
-            let suggestions: Vec<&String> = tag_map
-                .keys()
-                .filter(|t| t.contains(clean_tag) || clean_tag.contains(t.as_str()))
-                .collect();
-            if !suggestions.is_empty() {
-                println!("Did you mean: {}?", suggestions.iter().map(|t| format!("#{}", t)).collect::<Vec<_>>().join(", "));
+                // Suggest similar tags
+                let suggestions: Vec<&String> = tag_map
+                    .keys()
+                    .filter(|t| t.contains(clean_tag) || clean_tag.contains(t.as_str()))
+                    .collect();
+                if !suggestions.is_empty() {
+                    println!(
+                        "Did you mean: {}?",
+                        suggestions
+                            .iter()
+                            .map(|t| format!("#{}", t))
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    );
+                }
             }
         }
     }

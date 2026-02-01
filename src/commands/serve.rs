@@ -1,10 +1,10 @@
 use anyhow::{bail, Result};
-use std::io::Write;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use crate::config::ConfigManager;
 use crate::fs::mald_home;
 
-/// Start a read-only local HTTP server that renders the KB as HTML.
+/// Start a local HTTP server that renders the KB as HTML and provides a capture API.
 pub async fn run(kb: Option<&str>, port: u16) -> Result<()> {
     let config_path = mald_home().join("config").join("config.json");
     let config = ConfigManager::load(&config_path)?;
@@ -19,47 +19,51 @@ pub async fn run(kb: Option<&str>, port: u16) -> Result<()> {
     }
 
     let addr = format!("127.0.0.1:{}", port);
-    let listener = std::net::TcpListener::bind(&addr)?;
+    let listener = tokio::net::TcpListener::bind(&addr).await?;
     println!("Serving '{}' at http://{}", kb_name, addr);
+    println!("API: POST http://{}/api/capture  {{\"text\": \"...\"}}", addr);
     println!("Press Ctrl+C to stop.\n");
 
-    for stream in listener.incoming() {
-        match stream {
-            Ok(stream) => {
-                let kb = kb_path.clone();
-                let name = kb_name.clone();
-                std::thread::spawn(move || {
-                    if let Err(e) = handle_request(stream, &kb, &name) {
-                        tracing::debug!("Request error: {}", e);
-                    }
-                });
+    loop {
+        let (stream, _) = listener.accept().await?;
+        let kb = kb_path.clone();
+        let name = kb_name.clone();
+        tokio::spawn(async move {
+            if let Err(e) = handle_connection(stream, &kb, &name).await {
+                tracing::debug!("Request error: {}", e);
             }
-            Err(e) => tracing::debug!("Accept error: {}", e),
-        }
+        });
     }
-
-    Ok(())
 }
 
-fn handle_request(
-    mut stream: std::net::TcpStream,
+async fn handle_connection(
+    mut stream: tokio::net::TcpStream,
     kb_path: &std::path::Path,
     kb_name: &str,
 ) -> Result<()> {
-    let mut buf = [0u8; 4096];
-    let n = std::io::Read::read(&mut stream, &mut buf)?;
-    let request = String::from_utf8_lossy(&buf[..n]);
+    let mut buf = vec![0u8; 8192];
+    let n = stream.read(&mut buf).await?;
+    if n == 0 {
+        return Ok(());
+    }
+    let request = String::from_utf8_lossy(&buf[..n]).to_string();
 
-    let path = request
-        .lines()
-        .next()
-        .and_then(|line| line.split_whitespace().nth(1))
-        .unwrap_or("/");
+    let first_line = request.lines().next().unwrap_or("");
+    let method = first_line.split_whitespace().next().unwrap_or("GET");
+    let path = first_line.split_whitespace().nth(1).unwrap_or("/");
 
-    let (status, body, content_type) = if path == "/" || path == "/index" {
-        let html = render_index(kb_path, kb_name)?;
-        ("200 OK", html, "text/html; charset=utf-8")
-    } else {
+    let (status, body, content_type) = if method == "POST" && path == "/api/capture" {
+        handle_capture(&request, kb_path)
+    } else if method == "GET" && (path == "/" || path == "/index") {
+        match render_index(kb_path, kb_name) {
+            Ok(html) => ("200 OK", html, "text/html; charset=utf-8"),
+            Err(e) => (
+                "500 Internal Server Error",
+                format!("Error: {}", e),
+                "text/plain",
+            ),
+        }
+    } else if method == "GET" {
         let note_name = path.trim_start_matches('/').trim_end_matches(".html");
         match render_note(kb_path, note_name) {
             Some(html) => ("200 OK", html, "text/html; charset=utf-8"),
@@ -72,18 +76,104 @@ fn handle_request(
                 "text/html; charset=utf-8",
             ),
         }
+    } else {
+        ("405 Method Not Allowed", "Method not allowed".to_string(), "text/plain")
     };
 
     let response = format!(
-        "HTTP/1.1 {}\r\nContent-Type: {}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+        "HTTP/1.1 {}\r\nContent-Type: {}\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n{}",
         status,
         content_type,
         body.len(),
         body
     );
-    stream.write_all(response.as_bytes())?;
-    stream.flush()?;
+    stream.write_all(response.as_bytes()).await?;
+    stream.flush().await?;
     Ok(())
+}
+
+/// Handle POST /api/capture — append text to today's daily note.
+fn handle_capture(
+    request: &str,
+    kb_path: &std::path::Path,
+) -> (&'static str, String, &'static str) {
+    // Extract body (after blank line)
+    let body = request
+        .split("\r\n\r\n")
+        .nth(1)
+        .or_else(|| request.split("\n\n").nth(1))
+        .unwrap_or("");
+
+    let parsed: std::result::Result<serde_json::Value, _> = serde_json::from_str(body);
+    match parsed {
+        Ok(val) => {
+            let text = val
+                .get("text")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .trim();
+            if text.is_empty() {
+                return (
+                    "400 Bad Request",
+                    r#"{"error": "Missing or empty 'text' field"}"#.to_string(),
+                    "application/json",
+                );
+            }
+
+            let tag = val.get("tag").and_then(|v| v.as_str()).unwrap_or("");
+
+            // Append to today's daily note
+            let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+            let filename = format!("{}.md", today);
+            let path = kb_path.join(&filename);
+
+            let entry = if tag.is_empty() {
+                format!("- {}\n", text)
+            } else {
+                format!("- {} #{}\n", text, tag)
+            };
+
+            if path.exists() {
+                // Append
+                let mut content = std::fs::read_to_string(&path).unwrap_or_default();
+                if !content.ends_with('\n') {
+                    content.push('\n');
+                }
+                content.push_str(&entry);
+                if let Err(e) = std::fs::write(&path, content) {
+                    return (
+                        "500 Internal Server Error",
+                        format!(r#"{{"error": "{}"}}"#, e),
+                        "application/json",
+                    );
+                }
+            } else {
+                // Create daily note
+                let content = format!(
+                    "---\ntitle: {}\ntags: [daily]\ncreated: {}\n---\n\n# {}\n\n{}",
+                    today, today, today, entry
+                );
+                if let Err(e) = std::fs::write(&path, content) {
+                    return (
+                        "500 Internal Server Error",
+                        format!(r#"{{"error": "{}"}}"#, e),
+                        "application/json",
+                    );
+                }
+            }
+
+            (
+                "200 OK",
+                format!(r#"{{"ok": true, "file": "{}"}}"#, filename),
+                "application/json",
+            )
+        }
+        Err(e) => (
+            "400 Bad Request",
+            format!(r#"{{"error": "Invalid JSON: {}"}}"#, e),
+            "application/json",
+        ),
+    }
 }
 
 fn render_index(kb_path: &std::path::Path, kb_name: &str) -> Result<String> {

@@ -108,47 +108,45 @@ pub async fn run() -> Result<()> {
         println!();
     }
 
-    // Contextual suggestions based on what's missing
-    println!("Suggestions:");
+    // Contextual suggestions — only show relevant ones
+    let mut has_suggestions = false;
 
-    let template_dir = home.join("templates");
-    let template_count = if template_dir.exists() {
-        crate::fs::find_files(&template_dir, "md")
-            .map(|f| f.len())
-            .unwrap_or(0)
-    } else {
-        0
-    };
-    if template_count == 0 {
-        println!("  mald template init    # Create note templates");
-    }
-
-    let hnsw_path = home.join("index").join("hnsw.bin");
-    if !hnsw_path.exists() {
-        println!("  mald ai index {}  # Build vector search", default_kb);
-    }
-
-    if !home.join(".git").exists() {
+    if !home.join(".git").exists() && total_notes > 3 {
+        if !has_suggestions {
+            println!("Suggestions:");
+            has_suggestions = true;
+        }
         println!("  mald sync init        # Enable version history");
     }
 
-    let ollama_running = reqwest::Client::new()
-        .get("http://localhost:11434/api/tags")
-        .send()
-        .await
-        .is_ok();
-    if !ollama_running {
-        println!("  ollama serve          # Start AI backend");
+    // Only suggest AI after user has real content
+    if total_notes > 5 {
+        let hnsw_path = home.join("index").join("hnsw.bin");
+        if !hnsw_path.exists() {
+            let ollama_running = reqwest::Client::new()
+                .get("http://localhost:11434/api/tags")
+                .send()
+                .await
+                .is_ok();
+            if ollama_running {
+                if !has_suggestions {
+                    println!("Suggestions:");
+                    has_suggestions = true;
+                }
+                println!("  mald ai index {}  # Build semantic search", default_kb);
+            }
+        }
+    }
+
+    if has_suggestions {
+        println!();
     }
 
     // Always show quick actions
-    println!("\nQuick actions:");
+    println!("Quick actions:");
     println!("  mald q \"thought\"      # Quick capture");
     println!("  mald today            # Open daily note");
     println!("  mald search           # Interactive search");
-    if ollama_running {
-        println!("  mald ai chat          # AI chat");
-    }
 
     Ok(())
 }
