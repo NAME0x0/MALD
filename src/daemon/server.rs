@@ -42,7 +42,9 @@ fn generate_auth_token() -> Result<String> {
 /// Read the auth token from disk.
 pub fn read_auth_token() -> Option<String> {
     let token_path = mald_home().join("daemon.token");
-    std::fs::read_to_string(token_path).ok().map(|s| s.trim().to_string())
+    std::fs::read_to_string(token_path)
+        .ok()
+        .map(|s| s.trim().to_string())
 }
 
 pub async fn run() -> Result<()> {
@@ -163,11 +165,7 @@ where
         };
 
         // Auth check
-        let token_valid = req
-            .token
-            .as_ref()
-            .map(|t| t == auth_token)
-            .unwrap_or(false);
+        let token_valid = req.token.as_ref().map(|t| t == auth_token).unwrap_or(false);
 
         if !token_valid {
             let resp = Response {

@@ -45,12 +45,7 @@ pub async fn run(title: &str, kb: Option<&str>) -> Result<()> {
     ensure_directory(&index_dir)?;
     let meta_path = index_dir.join("metadata.db");
     let meta = crate::index::metadata::MetadataStore::open(&meta_path)?;
-    meta.index_document_fts(
-        &filepath.to_string_lossy(),
-        title,
-        &content,
-        &hash,
-    )?;
+    meta.index_document_fts(&filepath.to_string_lossy(), title, &content, &hash)?;
 
     println!("{}", filepath.display());
 

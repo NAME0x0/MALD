@@ -1278,6 +1278,7 @@ dependencies = [
  "dirs",
  "futures-util",
  "indicatif",
+ "libc",
  "llama_cpp_rs",
  "memmap2",
  "mockito",

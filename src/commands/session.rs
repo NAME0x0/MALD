@@ -14,7 +14,11 @@ pub async fn start(kb: Option<&str>) -> Result<()> {
 
     let kb_path = mald_home().join("kb").join(&kb_name);
     if !kb_path.exists() {
-        anyhow::bail!("Knowledge base '{}' not found. Create it with `mald kb create {}`", kb_name, kb_name);
+        anyhow::bail!(
+            "Knowledge base '{}' not found. Create it with `mald kb create {}`",
+            kb_name,
+            kb_name
+        );
     }
 
     let tmux_enabled = config
@@ -68,14 +72,7 @@ async fn start_tmux_session(
     let home = mald_home();
 
     let status = std::process::Command::new("tmux")
-        .args([
-            "new-session",
-            "-d",
-            "-s",
-            &session_name,
-            "-n",
-            "editor",
-        ])
+        .args(["new-session", "-d", "-s", &session_name, "-n", "editor"])
         .env("MALD_HOME", home.to_str().unwrap())
         .env("MALD_SESSION", &session_name)
         .env("MALD_KB", kb_path.to_str().unwrap())

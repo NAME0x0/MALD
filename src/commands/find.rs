@@ -13,9 +13,7 @@ use crate::index::metadata::MetadataStore;
 pub async fn run(query: Vec<String>, _kb: Option<&str>) -> Result<()> {
     let config_path = mald_home().join("config").join("config.json");
     let config = ConfigManager::load(&config_path)?;
-    let editor = config
-        .get_string("editor")
-        .unwrap_or_else(|| "nvim".into());
+    let editor = config.get_string("editor").unwrap_or_else(|| "nvim".into());
 
     // Ensure index exists
     let kb_dir = mald_home().join("kb");
@@ -123,10 +121,7 @@ fn fzf_interactive(editor: &str) -> Result<()> {
 }
 
 /// Pipe search results through fzf and open the selection.
-fn fzf_select(
-    results: &[crate::index::metadata::FtsResult],
-    editor: &str,
-) -> Result<()> {
+fn fzf_select(results: &[crate::index::metadata::FtsResult], editor: &str) -> Result<()> {
     // Format as "path\ttitle" for fzf, extract path after selection
     let input: String = results
         .iter()
@@ -164,7 +159,12 @@ fn run_fzf(input: &str, _editor: &str) -> Result<Option<String>> {
     };
 
     let mut child = Command::new("fzf")
-        .args(["--preview", preview_cmd, "--preview-window", "right:50%:wrap"])
+        .args([
+            "--preview",
+            preview_cmd,
+            "--preview-window",
+            "right:50%:wrap",
+        ])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .spawn()?;
@@ -196,10 +196,14 @@ fn run_fzf_with_columns(input: &str) -> Result<Option<String>> {
 
     let mut child = Command::new("fzf")
         .args([
-            "--delimiter", "\t",
-            "--with-nth", "2",
-            "--preview", preview_cmd,
-            "--preview-window", "right:50%:wrap",
+            "--delimiter",
+            "\t",
+            "--with-nth",
+            "2",
+            "--preview",
+            preview_cmd,
+            "--preview-window",
+            "right:50%:wrap",
         ])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())

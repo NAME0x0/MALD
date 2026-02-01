@@ -15,7 +15,9 @@ fn test_cli_help() {
         .arg("--help")
         .assert()
         .success()
-        .stdout(predicate::str::contains("Markdown Archive & Localized Daemon"))
+        .stdout(predicate::str::contains(
+            "Markdown Archive & Localized Daemon",
+        ))
         .stdout(predicate::str::contains("init"))
         .stdout(predicate::str::contains("new"))
         .stdout(predicate::str::contains("today"))

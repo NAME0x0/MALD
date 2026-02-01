@@ -41,7 +41,11 @@ pub async fn run() -> Result<()> {
     let kb_dir = home.join("kb");
     let kb_count = if kb_dir.exists() {
         std::fs::read_dir(&kb_dir)
-            .map(|d| d.filter_map(|e| e.ok()).filter(|e| e.path().is_dir()).count())
+            .map(|d| {
+                d.filter_map(|e| e.ok())
+                    .filter(|e| e.path().is_dir())
+                    .count()
+            })
             .unwrap_or(0)
     } else {
         0
@@ -106,7 +110,10 @@ pub async fn run() -> Result<()> {
         &format!("Editor ({})", editor),
         editor_exists,
         "found in PATH",
-        &format!("Install {} or run `mald config set editor <editor>`", editor),
+        &format!(
+            "Install {} or run `mald config set editor <editor>`",
+            editor
+        ),
         &mut issues,
     );
 
@@ -180,7 +187,11 @@ pub async fn run() -> Result<()> {
     let plugin_dir = home.join("plugins");
     let plugin_count = if plugin_dir.exists() {
         std::fs::read_dir(&plugin_dir)
-            .map(|d| d.filter_map(|e| e.ok()).filter(|e| e.path().is_file()).count())
+            .map(|d| {
+                d.filter_map(|e| e.ok())
+                    .filter(|e| e.path().is_file())
+                    .count()
+            })
             .unwrap_or(0)
     } else {
         0
@@ -197,9 +208,7 @@ pub async fn run() -> Result<()> {
     let log_dir = home.join("logs");
     let log_file = log_dir.join("daemon.log");
     let log_size = if log_file.exists() {
-        std::fs::metadata(&log_file)
-            .map(|m| m.len())
-            .unwrap_or(0)
+        std::fs::metadata(&log_file).map(|m| m.len()).unwrap_or(0)
     } else {
         0
     };
@@ -257,7 +266,12 @@ fn check_warn(name: &str, ok: bool, detail: &str, fix: &str, warnings: &mut u32)
     if ok {
         println!("  {} {} — {}", "[ok]".green().bold(), name, detail);
     } else {
-        println!("  {} {} — {}", "[warn]".yellow().bold(), name, fix.dark_grey());
+        println!(
+            "  {} {} — {}",
+            "[warn]".yellow().bold(),
+            name,
+            fix.dark_grey()
+        );
         *warnings += 1;
     }
 }

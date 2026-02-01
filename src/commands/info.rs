@@ -45,7 +45,11 @@ pub async fn run(note: &str, kb: Option<&str>) -> Result<()> {
     if !doc.tags.is_empty() {
         println!(
             "  Tags:         {}",
-            doc.tags.iter().map(|t| format!("#{}", t)).collect::<Vec<_>>().join(" ")
+            doc.tags
+                .iter()
+                .map(|t| format!("#{}", t))
+                .collect::<Vec<_>>()
+                .join(" ")
         );
     }
 
@@ -53,7 +57,11 @@ pub async fn run(note: &str, kb: Option<&str>) -> Result<()> {
     let wikilinks = &doc.wikilinks;
     let md_links = &doc.markdown_links;
     if !wikilinks.is_empty() || !md_links.is_empty() {
-        println!("  Outgoing:     {} wikilinks, {} markdown links", wikilinks.len(), md_links.len());
+        println!(
+            "  Outgoing:     {} wikilinks, {} markdown links",
+            wikilinks.len(),
+            md_links.len()
+        );
     }
 
     // Backlinks
@@ -97,7 +105,11 @@ pub async fn run(note: &str, kb: Option<&str>) -> Result<()> {
                 }
             })
             .collect();
-        println!("  Code blocks:  {} ({})", doc.code_blocks.len(), langs.join(", "));
+        println!(
+            "  Code blocks:  {} ({})",
+            doc.code_blocks.len(),
+            langs.join(", ")
+        );
     }
 
     // Index status
@@ -108,7 +120,10 @@ pub async fn run(note: &str, kb: Option<&str>) -> Result<()> {
         let path_str = path.to_string_lossy().to_string();
         let hash = crate::daemon::indexer::content_hash(&content);
         let indexed = !db.needs_reindex(&path_str, &hash)?;
-        println!("  Indexed:      {}", if indexed { "yes" } else { "no (stale)" });
+        println!(
+            "  Indexed:      {}",
+            if indexed { "yes" } else { "no (stale)" }
+        );
     }
 
     Ok(())

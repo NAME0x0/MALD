@@ -8,7 +8,7 @@ use clap_complete::{generate, Shell};
     after_help = "Run `mald` with no args to open today's daily note.\n\
                   Run `mald hub` for the interactive TUI.\n\
                   Run `mald <text>` to search and open a note.\n\n\
-                  Shortcuts: q=capture, f=find, e=edit, s=search, n=new, t=today",
+                  Shortcuts: q=capture, f=find, e=edit, s=search, n=new, t=today"
 )]
 pub struct Cli {
     #[command(subcommand)]
@@ -90,7 +90,9 @@ pub enum Command {
     },
 
     /// Rename a note and update all wikilink references
-    #[command(after_help = "Examples:\n  mald rename old-name \"New Title\"\n  mald rename api-design \"API v2 Design\" --kb work")]
+    #[command(
+        after_help = "Examples:\n  mald rename old-name \"New Title\"\n  mald rename api-design \"API v2 Design\" --kb work"
+    )]
     Rename {
         old_name: String,
         new_name: String,
@@ -157,7 +159,9 @@ pub enum Command {
     },
 
     /// List all tags or filter notes by tag
-    #[command(after_help = "Examples:\n  mald tags           # list all tags\n  mald tags rust      # notes tagged #rust\n  mald tags --json    # JSON output")]
+    #[command(
+        after_help = "Examples:\n  mald tags           # list all tags\n  mald tags rust      # notes tagged #rust\n  mald tags --json    # JSON output"
+    )]
     Tags {
         tag: Option<String>,
         #[arg(short, long)]
@@ -167,7 +171,9 @@ pub enum Command {
     },
 
     /// Aggregate open tasks from all notes
-    #[command(after_help = "Examples:\n  mald tasks\n  mald tasks --kb work\n  mald tasks --all\n  mald tasks --json")]
+    #[command(
+        after_help = "Examples:\n  mald tasks\n  mald tasks --kb work\n  mald tasks --all\n  mald tasks --json"
+    )]
     Tasks {
         #[arg(short, long)]
         kb: Option<String>,
@@ -178,7 +184,9 @@ pub enum Command {
     },
 
     /// Weekly/daily review: recent activity, stale notes, orphans, broken links
-    #[command(after_help = "Examples:\n  mald review\n  mald review --days 30\n  mald review --kb work")]
+    #[command(
+        after_help = "Examples:\n  mald review\n  mald review --days 30\n  mald review --kb work"
+    )]
     Review {
         #[arg(short, long)]
         kb: Option<String>,
@@ -187,7 +195,9 @@ pub enum Command {
     },
 
     /// Execute code blocks from a note
-    #[command(after_help = "Examples:\n  mald run script-note\n  mald run script-note -n 2     # run only block 2\n  mald run script-note --save   # save output into markdown\n  mald run script-note --list   # list blocks without running")]
+    #[command(
+        after_help = "Examples:\n  mald run script-note\n  mald run script-note -n 2     # run only block 2\n  mald run script-note --save   # save output into markdown\n  mald run script-note --list   # list blocks without running"
+    )]
     Run {
         note: String,
         #[arg(short, long)]
@@ -209,7 +219,9 @@ pub enum Command {
     },
 
     /// Export notes to HTML or portable markdown
-    #[command(after_help = "Examples:\n  mald export rust-notes\n  mald export --all --output-dir ~/export\n  mald export --all --format md")]
+    #[command(
+        after_help = "Examples:\n  mald export rust-notes\n  mald export --all --output-dir ~/export\n  mald export --all --format md"
+    )]
     Export {
         note: Option<String>,
         #[arg(short, long)]
@@ -225,7 +237,9 @@ pub enum Command {
     },
 
     /// Import markdown from external folder (Obsidian, Logseq, etc.)
-    #[command(after_help = "Examples:\n  mald import ~/ObsidianVault\n  mald import ~/notes --kb research\n  mald import ~/notes --flatten")]
+    #[command(
+        after_help = "Examples:\n  mald import ~/ObsidianVault\n  mald import ~/notes --kb research\n  mald import ~/notes --flatten"
+    )]
     Import {
         source: String,
         #[arg(short, long)]
@@ -235,7 +249,9 @@ pub enum Command {
     },
 
     /// Serve KB as local website (with capture API)
-    #[command(after_help = "Examples:\n  mald serve\n  mald serve --port 8080\n  mald serve --kb work")]
+    #[command(
+        after_help = "Examples:\n  mald serve\n  mald serve --port 8080\n  mald serve --kb work"
+    )]
     Serve {
         #[arg(short, long)]
         kb: Option<String>,
@@ -250,14 +266,18 @@ pub enum Command {
     },
 
     /// Git-based sync and version history
-    #[command(after_help = "Examples:\n  mald sync              # commit + push + pull\n  mald sync init         # initialize git\n  mald sync log          # show history\n  mald sync undo         # revert last change")]
+    #[command(
+        after_help = "Examples:\n  mald sync              # commit + push + pull\n  mald sync init         # initialize git\n  mald sync log          # show history\n  mald sync undo         # revert last change"
+    )]
     Sync {
         #[command(subcommand)]
         action: Option<SyncAction>,
     },
 
     /// Knowledge graph analysis
-    #[command(after_help = "Examples:\n  mald graph stats\n  mald graph broken-links\n  mald graph view         # output Mermaid diagram")]
+    #[command(
+        after_help = "Examples:\n  mald graph stats\n  mald graph broken-links\n  mald graph view         # output Mermaid diagram"
+    )]
     Graph {
         #[command(subcommand)]
         action: GraphAction,
@@ -271,14 +291,18 @@ pub enum Command {
     },
 
     /// AI-powered analysis (requires Ollama)
-    #[command(after_help = "Examples:\n  mald ai chat                    # interactive REPL\n  mald ai chat \"what is X?\"\n  mald ai summarize note1 note2\n  mald ai quiz note1 --count 10\n  mald ai briefing --days 3")]
+    #[command(
+        after_help = "Examples:\n  mald ai chat                    # interactive REPL\n  mald ai chat \"what is X?\"\n  mald ai summarize note1 note2\n  mald ai quiz note1 --count 10\n  mald ai briefing --days 3"
+    )]
     Ai {
         #[command(subcommand)]
         action: AiAction,
     },
 
     /// Configuration management
-    #[command(after_help = "Examples:\n  mald config get editor\n  mald config set editor code\n  mald config set hooks.on_create \"echo created\"")]
+    #[command(
+        after_help = "Examples:\n  mald config get editor\n  mald config set editor code\n  mald config set hooks.on_create \"echo created\""
+    )]
     Config {
         #[command(subcommand)]
         action: ConfigAction,
@@ -296,16 +320,17 @@ pub enum Command {
 
     /// Extended help on a topic (ai, search, sync, templates, daemon, plugins, graph, tasks)
     #[command(after_help = "Examples:\n  mald help-topic ai\n  mald help-topic search")]
-    HelpTopic {
-        topic: String,
-    },
+    HelpTopic { topic: String },
 
     /// Run self-diagnostics
     #[command(after_help = "Examples:\n  mald doctor")]
     Doctor,
 
     /// Benchmark HNSW vector index performance
-    #[command(hide = true, after_help = "Examples:\n  mald bench\n  mald bench --dim 768 --count 5000")]
+    #[command(
+        hide = true,
+        after_help = "Examples:\n  mald bench\n  mald bench --dim 768 --count 5000"
+    )]
     Bench {
         #[arg(short, long, default_value = "384")]
         dim: usize,
@@ -314,13 +339,17 @@ pub enum Command {
     },
 
     /// Generate shell completions
-    #[command(hide = true, after_help = "Examples:\n  mald completions bash >> ~/.bashrc\n  mald completions zsh > ~/.zfunc/_mald\n  mald completions powershell >> $PROFILE")]
-    Completions {
-        shell: Shell,
-    },
+    #[command(
+        hide = true,
+        after_help = "Examples:\n  mald completions bash >> ~/.bashrc\n  mald completions zsh > ~/.zfunc/_mald\n  mald completions powershell >> $PROFILE"
+    )]
+    Completions { shell: Shell },
 
     /// Manage plugins
-    #[command(hide = true, after_help = "Examples:\n  mald plugin list\n  mald plugin run my-script")]
+    #[command(
+        hide = true,
+        after_help = "Examples:\n  mald plugin list\n  mald plugin run my-script"
+    )]
     Plugin {
         #[command(subcommand)]
         action: PluginAction,
@@ -343,10 +372,7 @@ pub enum Command {
     Status,
 
     /// Open the interactive TUI hub
-    #[command(
-        alias = "h",
-        after_help = "Examples:\n  mald hub"
-    )]
+    #[command(alias = "h", after_help = "Examples:\n  mald hub")]
     Hub,
 
     /// Scan and fix broken wikilinks
@@ -361,7 +387,6 @@ pub enum Command {
         #[arg(long)]
         fix: bool,
     },
-
 }
 
 #[derive(Subcommand)]
@@ -547,7 +572,11 @@ pub async fn run(cli: Cli) -> anyhow::Result<()> {
         Some(Command::Status) => crate::commands::dashboard::run().await,
         Some(Command::Setup) => crate::commands::setup::run().await,
         Some(Command::Init) => crate::commands::init::run().await,
-        Some(Command::New { title, kb, template }) => {
+        Some(Command::New {
+            title,
+            kb,
+            template,
+        }) => {
             if let Some(tmpl) = template {
                 crate::commands::templates::create_from_template(&tmpl, &title, kb.as_deref()).await
             } else {
@@ -559,25 +588,28 @@ pub async fn run(cli: Cli) -> anyhow::Result<()> {
             let joined = text.join(" ");
             crate::commands::capture::run(&joined, kb.as_deref(), tag.as_deref()).await
         }
-        Some(Command::Find { query, kb }) => {
-            crate::commands::find::run(query, kb.as_deref()).await
-        }
+        Some(Command::Find { query, kb }) => crate::commands::find::run(query, kb.as_deref()).await,
         Some(Command::Edit { query, kb }) => {
             crate::commands::edit::run(&query, kb.as_deref()).await
         }
-        Some(Command::Rename { old_name, new_name, kb }) => {
-            crate::commands::rename::run(&old_name, &new_name, kb.as_deref()).await
-        }
+        Some(Command::Rename {
+            old_name,
+            new_name,
+            kb,
+        }) => crate::commands::rename::run(&old_name, &new_name, kb.as_deref()).await,
         Some(Command::Open { kb }) => crate::commands::open::run(kb.as_deref()).await,
-        Some(Command::Info { note, kb }) => {
-            crate::commands::info::run(&note, kb.as_deref()).await
-        }
+        Some(Command::Info { note, kb }) => crate::commands::info::run(&note, kb.as_deref()).await,
         Some(Command::Kb { action }) => match action {
             KbAction::Create { name } => crate::commands::kb::create(&name).await,
             KbAction::List { json } => crate::commands::kb::list(json).await,
             KbAction::Open { name } => crate::commands::kb::open(&name).await,
         },
-        Some(Command::Search { query, k, since, json }) => match query {
+        Some(Command::Search {
+            query,
+            k,
+            since,
+            json,
+        }) => match query {
             Some(q) => crate::commands::search::run(&q, k, since.as_deref(), json).await,
             None => {
                 if json {
@@ -606,7 +638,13 @@ pub async fn run(cli: Cli) -> anyhow::Result<()> {
         Some(Command::Review { kb, days }) => {
             crate::commands::review::run(kb.as_deref(), days).await
         }
-        Some(Command::Run { note, kb, block, list, save }) => {
+        Some(Command::Run {
+            note,
+            kb,
+            block,
+            list,
+            save,
+        }) => {
             if list {
                 crate::commands::run::list_blocks(&note, kb.as_deref()).await
             } else {
@@ -616,7 +654,14 @@ pub async fn run(cli: Cli) -> anyhow::Result<()> {
         Some(Command::Preview { note, kb }) => {
             crate::commands::preview::run(&note, kb.as_deref()).await
         }
-        Some(Command::Export { note, kb, output, all, output_dir, format }) => {
+        Some(Command::Export {
+            note,
+            kb,
+            output,
+            all,
+            output_dir,
+            format,
+        }) => {
             if all {
                 let dir = output_dir.as_deref().unwrap_or("./mald-export");
                 crate::commands::export::export_all(kb.as_deref(), dir, &format).await
@@ -629,16 +674,21 @@ pub async fn run(cli: Cli) -> anyhow::Result<()> {
                 ));
             }
         }
-        Some(Command::Import { source, kb, flatten }) => {
-            crate::commands::import::run(&source, kb.as_deref(), flatten).await
-        }
-        Some(Command::Serve { kb, port }) => {
-            crate::commands::serve::run(kb.as_deref(), port).await
-        }
+        Some(Command::Import {
+            source,
+            kb,
+            flatten,
+        }) => crate::commands::import::run(&source, kb.as_deref(), flatten).await,
+        Some(Command::Serve { kb, port }) => crate::commands::serve::run(kb.as_deref(), port).await,
         Some(Command::Template { action }) => match action {
             TemplateAction::List => crate::commands::templates::list().await,
-            TemplateAction::Use { template, title, kb } => {
-                crate::commands::templates::create_from_template(&template, &title, kb.as_deref()).await
+            TemplateAction::Use {
+                template,
+                title,
+                kb,
+            } => {
+                crate::commands::templates::create_from_template(&template, &title, kb.as_deref())
+                    .await
             }
             TemplateAction::Create { name } => crate::commands::templates::create(&name).await,
             TemplateAction::Edit { name } => crate::commands::templates::edit(&name).await,
@@ -697,9 +747,7 @@ pub async fn run(cli: Cli) -> anyhow::Result<()> {
         },
         Some(Command::Config { action }) => match action {
             ConfigAction::Get { key } => crate::commands::config::get(&key).await,
-            ConfigAction::Set { key, value } => {
-                crate::commands::config::set(&key, &value).await
-            }
+            ConfigAction::Set { key, value } => crate::commands::config::set(&key, &value).await,
         },
         Some(Command::Daemon { action }) => match action {
             DaemonAction::Start => crate::commands::daemon::start().await,
@@ -708,13 +756,9 @@ pub async fn run(cli: Cli) -> anyhow::Result<()> {
             DaemonAction::_Run => crate::daemon::server::run().await,
         },
         Some(Command::Reindex) => crate::commands::reindex::run().await,
-        Some(Command::HelpTopic { topic }) => {
-            crate::commands::help_topics::run(&topic).await
-        }
+        Some(Command::HelpTopic { topic }) => crate::commands::help_topics::run(&topic).await,
         Some(Command::Doctor) => crate::commands::doctor::run().await,
-        Some(Command::Bench { dim, count }) => {
-            crate::commands::bench::run(dim, count).await
-        }
+        Some(Command::Bench { dim, count }) => crate::commands::bench::run(dim, count).await,
         Some(Command::Completions { shell }) => {
             let mut cmd = Cli::command();
             generate(shell, &mut cmd, "mald", &mut std::io::stdout());
@@ -722,9 +766,7 @@ pub async fn run(cli: Cli) -> anyhow::Result<()> {
         }
         Some(Command::Plugin { action }) => match action {
             PluginAction::List => crate::commands::plugins::list().await,
-            PluginAction::Run { name, args } => {
-                crate::commands::plugins::run(&name, &args).await
-            }
+            PluginAction::Run { name, args } => crate::commands::plugins::run(&name, &args).await,
         },
         Some(Command::RunPlugin { name, args }) => {
             crate::commands::plugins::run(&name, &args).await

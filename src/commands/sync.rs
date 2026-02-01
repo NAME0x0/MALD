@@ -76,7 +76,10 @@ pub async fn sync() -> Result<()> {
     let remotes = run_git_output(&home, &["remote"])?;
     if remotes.trim().is_empty() {
         println!("No remote configured. Changes committed locally.");
-        println!("Add a remote: cd {} && git remote add origin <url>", home.display());
+        println!(
+            "Add a remote: cd {} && git remote add origin <url>",
+            home.display()
+        );
         return Ok(());
     }
 
@@ -132,7 +135,11 @@ pub async fn log(note: Option<&str>, count: usize) -> Result<()> {
             .iter()
             .filter(|f| {
                 f.file_stem()
-                    .map(|s| s.to_string_lossy().to_lowercase().contains(&note_name.to_lowercase()))
+                    .map(|s| {
+                        s.to_string_lossy()
+                            .to_lowercase()
+                            .contains(&note_name.to_lowercase())
+                    })
                     .unwrap_or(false)
             })
             .filter_map(|f| f.strip_prefix(&home).ok())
@@ -205,10 +212,7 @@ fn ensure_git(home: &std::path::Path) -> Result<()> {
 }
 
 fn run_git(dir: &std::path::Path, args: &[&str]) -> Result<()> {
-    let output = Command::new("git")
-        .current_dir(dir)
-        .args(args)
-        .output()?;
+    let output = Command::new("git").current_dir(dir).args(args).output()?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         bail!("git {} failed: {}", args.join(" "), stderr.trim());
@@ -217,9 +221,6 @@ fn run_git(dir: &std::path::Path, args: &[&str]) -> Result<()> {
 }
 
 fn run_git_output(dir: &std::path::Path, args: &[&str]) -> Result<String> {
-    let output = Command::new("git")
-        .current_dir(dir)
-        .args(args)
-        .output()?;
+    let output = Command::new("git").current_dir(dir).args(args).output()?;
     Ok(String::from_utf8_lossy(&output.stdout).to_string())
 }

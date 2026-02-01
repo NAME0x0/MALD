@@ -38,7 +38,10 @@ async fn ensure_ollama(client: &OllamaClient) -> Result<()> {
     }
 
     use crossterm::style::Stylize;
-    eprintln!("{}", "Ollama not running. Starting automatic setup...".yellow());
+    eprintln!(
+        "{}",
+        "Ollama not running. Starting automatic setup...".yellow()
+    );
 
     // Try starting ollama serve first (maybe installed but not running)
     let _ = std::process::Command::new("ollama")
@@ -94,17 +97,12 @@ async fn auto_pull_default_model(client: &OllamaClient) {
         DEFAULT_CHAT_MODEL
     } else {
         eprintln!("gemma3n not available, trying {}...", FALLBACK_CHAT_MODEL);
-        if client
-            .pull_model_stream(FALLBACK_CHAT_MODEL)
-            .await
-            .is_ok()
-        {
+        if client.pull_model_stream(FALLBACK_CHAT_MODEL).await.is_ok() {
             FALLBACK_CHAT_MODEL
         } else {
             eprintln!(
                 "{}",
-                "Could not pull default model. Pull manually: mald ai pull gemma3n:e4b"
-                    .yellow()
+                "Could not pull default model. Pull manually: mald ai pull gemma3n:e4b".yellow()
             );
             return;
         }
@@ -508,7 +506,10 @@ pub async fn setup_ai() -> Result<()> {
         let install_ok = install_ollama().await;
         if !install_ok {
             println!();
-            println!("  {} Could not install Ollama automatically.", "warning:".yellow().bold());
+            println!(
+                "  {} Could not install Ollama automatically.",
+                "warning:".yellow().bold()
+            );
             println!("  Install manually:");
             println!("    Linux/macOS: curl -fsSL https://ollama.com/install.sh | sh");
             println!("    Windows:     Download from https://ollama.com/download");
@@ -559,18 +560,27 @@ pub async fn setup_ai() -> Result<()> {
 
     // Try gemma3n first (Google Gemma 3 Nano — fastest inference, lowest compute)
     // Fall back to gemma3:4b if gemma3n isn't available in this Ollama version
-    println!("  Pulling {} (chat model — fast inference, low compute)...", DEFAULT_CHAT_MODEL);
+    println!(
+        "  Pulling {} (chat model — fast inference, low compute)...",
+        DEFAULT_CHAT_MODEL
+    );
     let chat_model = if client.pull_model_stream(DEFAULT_CHAT_MODEL).await.is_ok() {
         println!("  {} {} ready", "->".green(), DEFAULT_CHAT_MODEL);
         DEFAULT_CHAT_MODEL
     } else {
-        println!("  {} not available, trying {}...", DEFAULT_CHAT_MODEL, FALLBACK_CHAT_MODEL);
+        println!(
+            "  {} not available, trying {}...",
+            DEFAULT_CHAT_MODEL, FALLBACK_CHAT_MODEL
+        );
         if client.pull_model_stream(FALLBACK_CHAT_MODEL).await.is_ok() {
             println!("  {} {} ready", "->".green(), FALLBACK_CHAT_MODEL);
             FALLBACK_CHAT_MODEL
         } else {
             println!("  {} Could not pull chat model", "warning:".yellow());
-            println!("  You can pull manually: mald ai pull {}", DEFAULT_CHAT_MODEL);
+            println!(
+                "  You can pull manually: mald ai pull {}",
+                DEFAULT_CHAT_MODEL
+            );
             DEFAULT_CHAT_MODEL
         }
     };
@@ -584,7 +594,10 @@ pub async fn setup_ai() -> Result<()> {
             DEFAULT_EMBED_MODEL,
             e
         );
-        println!("  You can pull it later: mald ai pull {}", DEFAULT_EMBED_MODEL);
+        println!(
+            "  You can pull it later: mald ai pull {}",
+            DEFAULT_EMBED_MODEL
+        );
     } else {
         println!("  {} {} ready", "->".green(), DEFAULT_EMBED_MODEL);
     }
@@ -603,14 +616,23 @@ pub async fn setup_ai() -> Result<()> {
     println!("  {}", "AI setup complete!".green().bold());
     println!();
     println!("  Try it out:");
-    println!("    {}             Interactive AI chat", "mald ai chat".cyan());
+    println!(
+        "    {}             Interactive AI chat",
+        "mald ai chat".cyan()
+    );
     println!(
         "    {}  Build semantic search index",
         "mald ai index <kb>".cyan()
     );
-    println!("    {}           List installed models", "mald ai models".cyan());
+    println!(
+        "    {}           List installed models",
+        "mald ai models".cyan()
+    );
     println!();
-    println!("  Model: {} (Google Gemma 3 Nano — optimized for on-device speed)", chat_model);
+    println!(
+        "  Model: {} (Google Gemma 3 Nano — optimized for on-device speed)",
+        chat_model
+    );
 
     Ok(())
 }
@@ -626,9 +648,7 @@ async fn install_ollama() -> bool {
                 let tmp = std::env::temp_dir().join("OllamaSetup.exe");
                 if std::fs::write(&tmp, &bytes).is_ok() {
                     println!("  Running installer (this may take a moment)...");
-                    let status = std::process::Command::new(&tmp)
-                        .arg("/SILENT")
-                        .status();
+                    let status = std::process::Command::new(&tmp).arg("/SILENT").status();
                     let _ = std::fs::remove_file(&tmp);
                     return status.map(|s| s.success()).unwrap_or(false);
                 }

@@ -176,11 +176,7 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let path = dir.path().join("config.json");
         // Write an old config without hooks or config_version
-        std::fs::write(
-            &path,
-            r#"{"editor": "vim", "default_kb": "work"}"#,
-        )
-        .unwrap();
+        std::fs::write(&path, r#"{"editor": "vim", "default_kb": "work"}"#).unwrap();
 
         let config = ConfigManager::load(&path).unwrap();
         // Should have migrated: added config_version and ai defaults

@@ -93,10 +93,7 @@ pub fn find_backlinks<'a>(docs: &'a [MarkdownDocument], target: &str) -> Vec<&'a
 }
 
 /// Simple content search across documents.
-pub fn search_content<'a>(
-    docs: &'a [MarkdownDocument],
-    query: &str,
-) -> Vec<&'a MarkdownDocument> {
+pub fn search_content<'a>(docs: &'a [MarkdownDocument], query: &str) -> Vec<&'a MarkdownDocument> {
     let query_lower = query.to_lowercase();
     docs.iter()
         .filter(|doc| {

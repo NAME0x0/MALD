@@ -160,10 +160,13 @@ impl OllamaClient {
     }
 
     pub async fn chat(&self, model: &str, message: &str) -> Result<String> {
-        self.chat_with_history(model, &[ChatMessage {
-            role: "user".into(),
-            content: message.into(),
-        }])
+        self.chat_with_history(
+            model,
+            &[ChatMessage {
+                role: "user".into(),
+                content: message.into(),
+            }],
+        )
         .await
     }
 
@@ -187,11 +190,7 @@ impl OllamaClient {
     }
 
     /// Stream a chat response, printing tokens as they arrive.
-    pub async fn chat_streaming(
-        &self,
-        model: &str,
-        messages: &[ChatMessage],
-    ) -> Result<String> {
+    pub async fn chat_streaming(&self, model: &str, messages: &[ChatMessage]) -> Result<String> {
         let req = ChatRequest {
             model: model.to_string(),
             messages: messages.to_vec(),

@@ -67,10 +67,7 @@ pub async fn run(dim: usize, count: usize) -> Result<()> {
         save_elapsed.as_secs_f64() * 1000.0,
         file_size as f64 / 1024.0
     );
-    println!(
-        "Load:   {:.2}ms",
-        load_elapsed.as_secs_f64() * 1000.0,
-    );
+    println!("Load:   {:.2}ms", load_elapsed.as_secs_f64() * 1000.0,);
 
     println!("\nAll benchmarks completed.");
     Ok(())

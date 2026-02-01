@@ -299,8 +299,7 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let db = MetadataStore::open(&dir.path().join("test.db")).unwrap();
 
-        db.upsert_document("/a.md", "A", "content a", "h1")
-            .unwrap();
+        db.upsert_document("/a.md", "A", "content a", "h1").unwrap();
 
         let results = db.fts_search("nonexistent", 10).unwrap();
         assert!(results.is_empty());

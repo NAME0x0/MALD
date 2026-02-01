@@ -27,7 +27,10 @@ pub async fn run() -> Result<()> {
         .get_string("default_kb")
         .unwrap_or_else(|| "personal".into());
 
-    println!("MALD Dashboard — {}\n", Local::now().format("%A, %B %d, %Y"));
+    println!(
+        "MALD Dashboard — {}\n",
+        Local::now().format("%A, %B %d, %Y")
+    );
 
     // KB stats
     let kb_dir = home.join("kb");
@@ -103,7 +106,10 @@ pub async fn run() -> Result<()> {
             println!("  [ ] {} ({})", task, short_note);
         }
         if tasks.len() > 5 {
-            println!("  ... and {} more. Run `mald tasks` to see all.", tasks.len() - 5);
+            println!(
+                "  ... and {} more. Run `mald tasks` to see all.",
+                tasks.len() - 5
+            );
         }
         println!();
     }

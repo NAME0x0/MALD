@@ -172,7 +172,12 @@ pub async fn summarize(
 
     let mut context = String::new();
     for (i, (title, content)) in note_contents.iter().enumerate() {
-        context.push_str(&format!("--- Document {} ---\nTitle: {}\n{}\n\n", i + 1, title, content));
+        context.push_str(&format!(
+            "--- Document {} ---\nTitle: {}\n{}\n\n",
+            i + 1,
+            title,
+            content
+        ));
     }
 
     let messages = vec![
@@ -277,7 +282,12 @@ pub async fn compare(
 
     let mut context = String::new();
     for (i, (title, content)) in note_contents.iter().enumerate() {
-        context.push_str(&format!("--- Document {} ---\nTitle: {}\n{}\n\n", i + 1, title, content));
+        context.push_str(&format!(
+            "--- Document {} ---\nTitle: {}\n{}\n\n",
+            i + 1,
+            title,
+            content
+        ));
     }
 
     let messages = vec![

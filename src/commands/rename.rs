@@ -38,7 +38,10 @@ pub async fn run(old_name: &str, new_name: &str, kb: Option<&str>) -> Result<()>
         .unwrap()
         .to_string_lossy()
         .to_string();
-    let new_stem = if old_stem.len() > 9 && old_stem[..8].chars().all(|c| c.is_ascii_digit()) && old_stem.as_bytes()[8] == b'-' {
+    let new_stem = if old_stem.len() > 9
+        && old_stem[..8].chars().all(|c| c.is_ascii_digit())
+        && old_stem.as_bytes()[8] == b'-'
+    {
         // Has YYYYMMDD- prefix, preserve it
         let prefix = &old_stem[..9];
         format!("{}{}", prefix, slugify(new_name))
@@ -90,8 +93,9 @@ pub async fn run(old_name: &str, new_name: &str, kb: Option<&str>) -> Result<()>
     for (tmp, target) in &temp_files {
         if let Err(e) = std::fs::rename(tmp, target) {
             // Fallback: copy + delete (cross-device rename)
-            std::fs::copy(tmp, target)
-                .map_err(|_| anyhow::anyhow!("Failed to commit rename for {}: {}", target.display(), e))?;
+            std::fs::copy(tmp, target).map_err(|_| {
+                anyhow::anyhow!("Failed to commit rename for {}: {}", target.display(), e)
+            })?;
             let _ = std::fs::remove_file(tmp);
         }
     }
@@ -105,19 +109,18 @@ pub async fn run(old_name: &str, new_name: &str, kb: Option<&str>) -> Result<()>
             let _ = meta.delete_doc_chunks(&source_file.to_string_lossy());
             if let Ok(content) = std::fs::read_to_string(&new_file) {
                 let hash = crate::daemon::indexer::content_hash(&content);
-                let _ = meta.index_document_fts(
-                    &new_file.to_string_lossy(),
-                    new_name,
-                    &content,
-                    &hash,
-                );
+                let _ =
+                    meta.index_document_fts(&new_file.to_string_lossy(), new_name, &content, &hash);
             }
         }
     }
 
     println!("Renamed: {} -> {}", old_stem, new_stem);
     if updated_count > 0 {
-        println!("Updated {} file(s) with new wikilink references.", updated_count);
+        println!(
+            "Updated {} file(s) with new wikilink references.",
+            updated_count
+        );
     }
 
     Ok(())

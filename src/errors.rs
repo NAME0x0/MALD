@@ -35,22 +35,17 @@ impl ContextualError {
         if let Some(ref topic) = self.help_topic {
             eprintln!(
                 "  {}",
-                format!("Run `mald help-topic {}` for more info", topic)
-                    .dark_grey()
+                format!("Run `mald help-topic {}` for more info", topic).dark_grey()
             );
         }
-        eprintln!(
-            "  {}",
-            "Run `mald doctor` to check your setup.".dark_grey()
-        );
+        eprintln!("  {}", "Run `mald doctor` to check your setup.".dark_grey());
     }
 }
 
 /// Try to extract a ContextualError from an anyhow::Error chain.
 /// Returns None if the error doesn't contain contextual info.
 pub fn extract_contextual(err: &anyhow::Error) -> Option<&ContextualError> {
-    err.downcast_ref::<ContextualErrorWrapper>()
-        .map(|w| &w.0)
+    err.downcast_ref::<ContextualErrorWrapper>().map(|w| &w.0)
 }
 
 /// Wrapper to make ContextualError usable with anyhow.

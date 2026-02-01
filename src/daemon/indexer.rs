@@ -92,7 +92,10 @@ pub async fn full_index(kb_path: &Path, config: &ConfigManager) -> Result<()> {
     );
 
     for file in &files {
-        let file_name = file.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+        let file_name = file
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_default();
         progress.set_message(file_name);
         let content = std::fs::read_to_string(file)?;
         let hash = content_hash(&content);

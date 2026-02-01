@@ -87,10 +87,8 @@ pub async fn run() -> Result<()> {
             #[cfg(unix)]
             {
                 use std::os::unix::fs::PermissionsExt;
-                let _ = std::fs::set_permissions(
-                    &current_exe,
-                    std::fs::Permissions::from_mode(0o755),
-                );
+                let _ =
+                    std::fs::set_permissions(&current_exe, std::fs::Permissions::from_mode(0o755));
             }
 
             // Clean up backup

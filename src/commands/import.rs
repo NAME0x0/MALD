@@ -39,17 +39,11 @@ pub async fn run(source: &str, kb: Option<&str>, flatten: bool) -> Result<()> {
     for src_file in &md_files {
         let dest = if flatten {
             // Flatten: all files go directly into kb root
-            let filename = src_file
-                .file_name()
-                .unwrap()
-                .to_string_lossy()
-                .to_string();
+            let filename = src_file.file_name().unwrap().to_string_lossy().to_string();
             kb_path.join(&filename)
         } else {
             // Preserve subdirectory structure
-            let relative = src_file
-                .strip_prefix(source_path)
-                .unwrap_or(src_file);
+            let relative = src_file.strip_prefix(source_path).unwrap_or(src_file);
             kb_path.join(relative)
         };
 
@@ -112,7 +106,10 @@ fn collect_md_recursive(dir: &Path, results: &mut Vec<std::path::PathBuf>) -> Re
         return Ok(());
     }
     // Skip hidden dirs and common non-content dirs
-    let dir_name = dir.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+    let dir_name = dir
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_default();
     if dir_name.starts_with('.') || dir_name == "node_modules" || dir_name == ".trash" {
         return Ok(());
     }

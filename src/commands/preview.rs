@@ -45,16 +45,10 @@ fn resolve_transclusions(body: &str, kb: Option<&str>, depth: usize) -> String {
             // Try to load the referenced note
             match load_note_body(target, kb) {
                 Some(embedded) => {
-                    result.push_str(&format!(
-                        "\n\x1b[90m─── embedded: {} ───\x1b[0m\n",
-                        target
-                    ));
+                    result.push_str(&format!("\n\x1b[90m─── embedded: {} ───\x1b[0m\n", target));
                     let resolved = resolve_transclusions(&embedded, kb, depth + 1);
                     result.push_str(&resolved);
-                    result.push_str(&format!(
-                        "\n\x1b[90m─── end: {} ───\x1b[0m\n",
-                        target
-                    ));
+                    result.push_str(&format!("\n\x1b[90m─── end: {} ───\x1b[0m\n", target));
                 }
                 None => {
                     result.push_str(&format!("\x1b[31m![[{} (not found)]]\x1b[0m", target));

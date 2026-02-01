@@ -21,10 +21,7 @@ pub fn start_watching(dir: &Path, tx: Sender<PathBuf>) -> Result<RecommendedWatc
                     {
                         last_event = Some(now);
                         for path in event.paths {
-                            if path
-                                .extension()
-                                .is_some_and(|e| e == "md")
-                            {
+                            if path.extension().is_some_and(|e| e == "md") {
                                 let _ = tx.blocking_send(path);
                             }
                         }

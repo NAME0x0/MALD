@@ -153,7 +153,10 @@ pub async fn create(name: &str) -> Result<()> {
     std::fs::write(&path, &content)?;
 
     println!("Created template: {}", path.display());
-    println!("Edit it, then use with: mald new \"Title\" --template {}", name);
+    println!(
+        "Edit it, then use with: mald new \"Title\" --template {}",
+        name
+    );
 
     // Open in editor
     let config_path = mald_home().join("config").join("config.json");
@@ -206,11 +209,7 @@ fn list_template_names() -> Vec<String> {
         .into_iter()
         .flatten()
         .filter_map(|e| e.ok())
-        .filter(|e| {
-            e.path()
-                .extension()
-                .is_some_and(|ext| ext == "md")
-        })
+        .filter(|e| e.path().extension().is_some_and(|ext| ext == "md"))
         .filter_map(|e| {
             e.path()
                 .file_stem()

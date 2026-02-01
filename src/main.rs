@@ -41,9 +41,7 @@ async fn main() -> anyhow::Result<()> {
             .init();
     } else {
         // Interactive: log to stderr (suppressed by default, enabled with RUST_LOG)
-        tracing_subscriber::fmt()
-            .with_env_filter(env_filter)
-            .init();
+        tracing_subscriber::fmt().with_env_filter(env_filter).init();
     }
 
     // Auto-start daemon if MALD is set up (silent, non-blocking)

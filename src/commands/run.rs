@@ -6,7 +6,12 @@ use crate::parser::MarkdownDocument;
 
 /// Execute code blocks from a note. Like Jupyter but in the terminal.
 /// With --save, writes output back into the markdown after each code block.
-pub async fn run(note: &str, kb: Option<&str>, block_index: Option<usize>, save: bool) -> Result<()> {
+pub async fn run(
+    note: &str,
+    kb: Option<&str>,
+    block_index: Option<usize>,
+    save: bool,
+) -> Result<()> {
     let filepath = resolve_note(note, kb)?;
     let content = std::fs::read_to_string(&filepath)?;
     let doc = MarkdownDocument::parse(&content);
@@ -17,11 +22,12 @@ pub async fn run(note: &str, kb: Option<&str>, block_index: Option<usize>, save:
     }
 
     // Safety confirmation
-    let total = if block_index.is_some() { 1 } else { doc.code_blocks.len() };
-    println!(
-        "About to execute {} code block(s) from '{}'",
-        total, note
-    );
+    let total = if block_index.is_some() {
+        1
+    } else {
+        doc.code_blocks.len()
+    };
+    println!("About to execute {} code block(s) from '{}'", total, note);
     print!("Continue? [Y/n] ");
     use std::io::Write;
     std::io::stdout().flush()?;
@@ -33,18 +39,19 @@ pub async fn run(note: &str, kb: Option<&str>, block_index: Option<usize>, save:
         return Ok(());
     }
 
-    let blocks_to_run: Vec<(usize, &crate::parser::markdown::CodeBlock)> = if let Some(idx) = block_index {
-        if idx >= doc.code_blocks.len() {
-            bail!(
-                "Block index {} out of range (note has {} blocks)",
-                idx,
-                doc.code_blocks.len()
-            );
-        }
-        vec![(idx, &doc.code_blocks[idx])]
-    } else {
-        doc.code_blocks.iter().enumerate().collect()
-    };
+    let blocks_to_run: Vec<(usize, &crate::parser::markdown::CodeBlock)> =
+        if let Some(idx) = block_index {
+            if idx >= doc.code_blocks.len() {
+                bail!(
+                    "Block index {} out of range (note has {} blocks)",
+                    idx,
+                    doc.code_blocks.len()
+                );
+            }
+            vec![(idx, &doc.code_blocks[idx])]
+        } else {
+            doc.code_blocks.iter().enumerate().collect()
+        };
 
     let mut outputs: Vec<(usize, String)> = Vec::new();
 
@@ -123,7 +130,8 @@ fn save_outputs_to_file(
                 new_content.push('\n');
                 if lines[i].trim() == "```" {
                     // Check if there's output to insert for this block
-                    if let Some((_, output)) = outputs.iter().find(|(idx, _)| *idx == block_counter) {
+                    if let Some((_, output)) = outputs.iter().find(|(idx, _)| *idx == block_counter)
+                    {
                         // Skip any existing output block immediately after
                         if i + 1 < lines.len() && lines[i + 1].starts_with("```output") {
                             i += 1; // skip ```output
@@ -168,7 +176,14 @@ pub async fn list_blocks(note: &str, kb: Option<&str>) -> Result<()> {
         } else {
             &block.language
         };
-        let preview: String = block.content.lines().next().unwrap_or("").chars().take(60).collect();
+        let preview: String = block
+            .content
+            .lines()
+            .next()
+            .unwrap_or("")
+            .chars()
+            .take(60)
+            .collect();
         println!("  [{}] {} — {}", i, lang, preview);
     }
 
@@ -244,11 +259,7 @@ fn run_rust_block(code: &str) -> Result<ExecOutput> {
     std::fs::write(&src_path, &full_code)?;
 
     let compile = Command::new("rustc")
-        .args([
-            src_path.to_str().unwrap(),
-            "-o",
-            exe_path.to_str().unwrap(),
-        ])
+        .args([src_path.to_str().unwrap(), "-o", exe_path.to_str().unwrap()])
         .output()?;
 
     if !compile.status.success() {
@@ -295,7 +306,11 @@ fn resolve_note(note: &str, kb: Option<&str>) -> Result<std::path::PathBuf> {
     let files = crate::fs::find_files(&kb_path, "md")?;
     for f in &files {
         if let Some(stem) = f.file_stem() {
-            if stem.to_string_lossy().to_lowercase().contains(&note.to_lowercase()) {
+            if stem
+                .to_string_lossy()
+                .to_lowercase()
+                .contains(&note.to_lowercase())
+            {
                 return Ok(f.clone());
             }
         }

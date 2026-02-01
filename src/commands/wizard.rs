@@ -46,10 +46,7 @@ pub async fn run() -> Result<()> {
     let kb_name = prompt_string("  Knowledge base name", "personal")?;
     let kb_path = home.join("kb").join(&kb_name);
     ensure_directory(&kb_path)?;
-    config.set(
-        "default_kb",
-        serde_json::Value::String(kb_name.clone()),
-    )?;
+    config.set("default_kb", serde_json::Value::String(kb_name.clone()))?;
     println!(
         "  {} Created KB: {}\n",
         "->".green(),
@@ -79,10 +76,7 @@ pub async fn run() -> Result<()> {
         .await
         .is_ok();
     if ollama_running {
-        println!(
-            " {} Ollama is running",
-            "->".green()
-        );
+        println!(" {} Ollama is running", "->".green());
         config.set("ai.backend", serde_json::Value::String("ollama".into()))?;
     } else {
         println!(
@@ -102,23 +96,19 @@ fn print_banner() {
     println!();
     println!(
         "  {}",
-        "╔══════════════════════════════════════╗"
-            .dark_magenta()
+        "╔══════════════════════════════════════╗".dark_magenta()
     );
     println!(
         "  {}",
-        "║   MALD — Welcome to your PKM        ║"
-            .dark_magenta()
+        "║   MALD — Welcome to your PKM        ║".dark_magenta()
     );
     println!(
         "  {}",
-        "║   Markdown Archive & Localized Daemon║"
-            .dark_magenta()
+        "║   Markdown Archive & Localized Daemon║".dark_magenta()
     );
     println!(
         "  {}",
-        "╚══════════════════════════════════════╝"
-            .dark_magenta()
+        "╚══════════════════════════════════════╝".dark_magenta()
     );
     println!();
     println!("  Let's set up your knowledge base.\n");
@@ -132,35 +122,17 @@ fn print_next_steps(kb_name: &str) {
         "    {}          Open today's daily note",
         "mald today".cyan()
     );
-    println!(
-        "    {}  Create a new note",
-        "mald new \"Title\"".cyan()
-    );
-    println!(
-        "    {}   Quick capture a thought",
-        "mald q <text>".cyan()
-    );
-    println!(
-        "    {}        Interactive search",
-        "mald search".cyan()
-    );
+    println!("    {}  Create a new note", "mald new \"Title\"".cyan());
+    println!("    {}   Quick capture a thought", "mald q <text>".cyan());
+    println!("    {}        Interactive search", "mald search".cyan());
     println!(
         "    {}   Browse knowledge base",
         "mald open".cyan().to_string().as_str()
     );
-    println!(
-        "    {}   Set up local AI",
-        "mald setup ai".cyan()
-    );
-    println!(
-        "    {}        Check your setup",
-        "mald doctor".cyan()
-    );
+    println!("    {}   Set up local AI", "mald setup ai".cyan());
+    println!("    {}        Check your setup", "mald doctor".cyan());
     println!();
-    println!(
-        "  Run {} for all commands.",
-        "mald --help".cyan()
-    );
+    println!("  Run {} for all commands.", "mald --help".cyan());
     let _ = kb_name; // used in banner context
 }
 

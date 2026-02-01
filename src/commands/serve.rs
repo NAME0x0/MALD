@@ -21,7 +21,10 @@ pub async fn run(kb: Option<&str>, port: u16) -> Result<()> {
     let addr = format!("127.0.0.1:{}", port);
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     println!("Serving '{}' at http://{}", kb_name, addr);
-    println!("API: POST http://{}/api/capture  {{\"text\": \"...\"}}", addr);
+    println!(
+        "API: POST http://{}/api/capture  {{\"text\": \"...\"}}",
+        addr
+    );
     println!("Press Ctrl+C to stop.\n");
 
     loop {
@@ -77,7 +80,11 @@ async fn handle_connection(
             ),
         }
     } else {
-        ("405 Method Not Allowed", "Method not allowed".to_string(), "text/plain")
+        (
+            "405 Method Not Allowed",
+            "Method not allowed".to_string(),
+            "text/plain",
+        )
     };
 
     let response = format!(
@@ -191,10 +198,7 @@ fn render_index(kb_path: &std::path::Path, kb_name: &str) -> Result<String> {
 
     let mut list = String::new();
     for (stem, title) in &entries {
-        list.push_str(&format!(
-            "<li><a href=\"/{}\">{}</a></li>\n",
-            stem, title
-        ));
+        list.push_str(&format!("<li><a href=\"/{}\">{}</a></li>\n", stem, title));
     }
 
     Ok(format!(

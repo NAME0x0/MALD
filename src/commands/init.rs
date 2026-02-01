@@ -86,7 +86,10 @@ pub async fn run() -> Result<()> {
     let editor = config.get_string("editor").unwrap_or_else(|| "nvim".into());
     let editor_missing = !crate::commands::doctor::which_exists_pub(&editor);
     if editor_missing {
-        println!("\nTip: '{}' not found in PATH. Run `mald setup` to configure your editor.", editor);
+        println!(
+            "\nTip: '{}' not found in PATH. Run `mald setup` to configure your editor.",
+            editor
+        );
     }
 
     Ok(())

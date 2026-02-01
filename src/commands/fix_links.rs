@@ -109,10 +109,7 @@ pub async fn run(kb: Option<&str>, auto_fix: bool) -> Result<()> {
         if !fixes.is_empty() {
             let mut new_content = content.clone();
             for (old, new) in &fixes {
-                new_content = new_content.replace(
-                    &format!("[[{}]]", old),
-                    &format!("[[{}]]", new),
-                );
+                new_content = new_content.replace(&format!("[[{}]]", old), &format!("[[{}]]", new));
             }
             std::fs::write(path, new_content)?;
         }
@@ -142,10 +139,7 @@ pub fn collect_note_names(kb_path: &std::path::Path) -> Vec<String> {
     crate::fs::find_files(kb_path, "md")
         .unwrap_or_default()
         .iter()
-        .filter_map(|f| {
-            f.file_stem()
-                .map(|s| s.to_string_lossy().to_string())
-        })
+        .filter_map(|f| f.file_stem().map(|s| s.to_string_lossy().to_string()))
         .collect()
 }
 
@@ -192,10 +186,7 @@ pub fn find_backlinks(target_stem: &str) -> Vec<(String, String)> {
                                         .unwrap_or("")
                                         .trim()
                                         .to_string();
-                                    backlinks.push((
-                                        format!("{}/{}", kb_name, stem),
-                                        context_line,
-                                    ));
+                                    backlinks.push((format!("{}/{}", kb_name, stem), context_line));
                                     break; // one per file
                                 }
                             }

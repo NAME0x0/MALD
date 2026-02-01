@@ -196,9 +196,8 @@ impl EditorState {
                 self.forward_links = crate::parser::links::extract_wikilinks(&content);
                 self.tags = crate::parser::tags::extract_tags(&content);
                 if let Some(stem) = path.file_stem() {
-                    self.backlinks = crate::commands::fix_links::find_backlinks(
-                        &stem.to_string_lossy(),
-                    );
+                    self.backlinks =
+                        crate::commands::fix_links::find_backlinks(&stem.to_string_lossy());
                 }
                 return true;
             }
@@ -457,8 +456,14 @@ impl TuiApp {
         }
 
         all_files.sort_by(|a, b| {
-            let ma = a.metadata().and_then(|m| m.modified()).unwrap_or(std::time::UNIX_EPOCH);
-            let mb = b.metadata().and_then(|m| m.modified()).unwrap_or(std::time::UNIX_EPOCH);
+            let ma = a
+                .metadata()
+                .and_then(|m| m.modified())
+                .unwrap_or(std::time::UNIX_EPOCH);
+            let mb = b
+                .metadata()
+                .and_then(|m| m.modified())
+                .unwrap_or(std::time::UNIX_EPOCH);
             mb.cmp(&ma)
         });
 
@@ -537,7 +542,9 @@ pub async fn run_full_tui() -> Result<()> {
 
     if let Ok(()) = result {
         if let Some(path) = app.open_file_external.take() {
-            std::process::Command::new(&app.ext_editor).arg(&path).status()?;
+            std::process::Command::new(&app.ext_editor)
+                .arg(&path)
+                .status()?;
         }
     }
 
@@ -673,7 +680,8 @@ fn run_app_loop(
                         && key.modifiers.contains(KeyModifiers::CONTROL)
                     {
                         if app.editor.modified {
-                            app.editor.status_msg = "Unsaved changes! Ctrl+S to save, Ctrl+Q again to discard.".into();
+                            app.editor.status_msg =
+                                "Unsaved changes! Ctrl+S to save, Ctrl+Q again to discard.".into();
                             app.editor.modified = false; // allow second Ctrl+Q to quit
                         } else {
                             app.view = View::Home;
@@ -1061,13 +1069,17 @@ fn draw_app(f: &mut Frame, app: &mut TuiApp) {
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Length(3), // tab bar
-            Constraint::Min(1),   // content
+            Constraint::Min(1),    // content
             Constraint::Length(1), // status
         ])
         .split(f.area());
 
     // Tab bar with daemon indicator
-    let daemon_indicator = if app.daemon_running { " [daemon:on]" } else { "" };
+    let daemon_indicator = if app.daemon_running {
+        " [daemon:on]"
+    } else {
+        ""
+    };
     let titles: Vec<Line> = View::titles()
         .into_iter()
         .enumerate()
@@ -1125,7 +1137,12 @@ fn draw_home(f: &mut Frame, home: &HomeState, area: Rect) {
         .map(|(n, c)| format!("{}: {}", n, c))
         .collect::<Vec<_>>()
         .join("  ");
-    let top_text = format!("  {} notes across {} KBs  |  {}", total_notes, home.kb_stats.len(), kbs_text);
+    let top_text = format!(
+        "  {} notes across {} KBs  |  {}",
+        total_notes,
+        home.kb_stats.len(),
+        kbs_text
+    );
     let top = Paragraph::new(top_text).block(Block::default().borders(Borders::BOTTOM));
     f.render_widget(top, chunks[0]);
 
@@ -1144,7 +1161,11 @@ fn draw_home(f: &mut Frame, home: &HomeState, area: Rect) {
     } else {
         recent_items
     })
-    .block(Block::default().borders(Borders::ALL).title(" Recent (7d) "));
+    .block(
+        Block::default()
+            .borders(Borders::ALL)
+            .title(" Recent (7d) "),
+    );
     f.render_widget(recent_list, cols[0]);
 
     let task_items: Vec<ListItem> = home
@@ -1163,14 +1184,22 @@ fn draw_home(f: &mut Frame, home: &HomeState, area: Rect) {
     } else {
         task_items
     })
-    .block(Block::default().borders(Borders::ALL).title(format!(" Tasks ({}) ", home.tasks.len())));
+    .block(
+        Block::default()
+            .borders(Borders::ALL)
+            .title(format!(" Tasks ({}) ", home.tasks.len())),
+    );
     f.render_widget(task_list, cols[1]);
 }
 
 fn draw_search_standalone(f: &mut Frame, state: &mut SearchState) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Length(3), Constraint::Min(1), Constraint::Length(1)])
+        .constraints([
+            Constraint::Length(3),
+            Constraint::Min(1),
+            Constraint::Length(1),
+        ])
         .split(f.area());
     let input = Paragraph::new(state.query.as_str())
         .block(Block::default().borders(Borders::ALL).title(" Search "));
@@ -1204,12 +1233,20 @@ fn draw_search_results(f: &mut Frame, state: &mut SearchState, area: Rect) {
         .results
         .iter()
         .map(|r| {
-            let title = if r.title.is_empty() { &r.path } else { &r.title };
+            let title = if r.title.is_empty() {
+                &r.path
+            } else {
+                &r.title
+            };
             ListItem::new(title.as_str())
         })
         .collect();
     let list = List::new(items)
-        .block(Block::default().borders(Borders::ALL).title(format!(" {} results ", state.results.len())))
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(format!(" {} results ", state.results.len())),
+        )
         .highlight_style(Style::default().bg(Color::DarkGray).fg(Color::White))
         .highlight_symbol("> ");
     f.render_stateful_widget(list, cols[0], &mut state.selected);
@@ -1281,7 +1318,10 @@ fn draw_tasks(f: &mut Frame, state: &mut TasksState, area: Rect) {
     } else {
         items
     })
-    .block(Block::default().borders(Borders::ALL).title(format!(" Tasks ({}) — Enter opens note ", state.tasks.len())))
+    .block(Block::default().borders(Borders::ALL).title(format!(
+        " Tasks ({}) — Enter opens note ",
+        state.tasks.len()
+    )))
     .highlight_style(Style::default().bg(Color::DarkGray).fg(Color::White))
     .highlight_symbol("> ");
     f.render_stateful_widget(list, area, &mut state.selected);
@@ -1333,14 +1373,17 @@ fn draw_editor(f: &mut Frame, editor: &mut EditorState, area: Rect) {
     let modified_indicator = if editor.modified { " [+]" } else { "" };
     let title = match &editor.file_path {
         Some(p) => {
-            let name = p.file_name().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+            let name = p
+                .file_name()
+                .map(|s| s.to_string_lossy().to_string())
+                .unwrap_or_default();
             format!(" {}{} ", name, modified_indicator)
         }
         None => format!(" Editor{} ", modified_indicator),
     };
 
-    let editor_widget = Paragraph::new(text_lines)
-        .block(Block::default().borders(Borders::ALL).title(title));
+    let editor_widget =
+        Paragraph::new(text_lines).block(Block::default().borders(Borders::ALL).title(title));
     f.render_widget(editor_widget, editor_chunks[0]);
 
     // Set cursor position
@@ -1359,8 +1402,8 @@ fn draw_editor(f: &mut Frame, editor: &mut EditorState, area: Rect) {
         editor.cursor_col + 1,
         editor.status_msg
     );
-    let status_widget = Paragraph::new(status)
-        .style(Style::default().bg(Color::DarkGray).fg(Color::White));
+    let status_widget =
+        Paragraph::new(status).style(Style::default().bg(Color::DarkGray).fg(Color::White));
     f.render_widget(status_widget, editor_chunks[1]);
 
     // Sidebar: backlinks + forward links + tags
@@ -1421,7 +1464,12 @@ fn draw_editor(f: &mut Frame, editor: &mut EditorState, area: Rect) {
     let tag_text = if editor.tags.is_empty() {
         "  (no tags)".to_string()
     } else {
-        editor.tags.iter().map(|t| format!("  #{}", t)).collect::<Vec<_>>().join("\n")
+        editor
+            .tags
+            .iter()
+            .map(|t| format!("  #{}", t))
+            .collect::<Vec<_>>()
+            .join("\n")
     };
     let tags_widget = Paragraph::new(tag_text)
         .block(Block::default().borders(Borders::ALL).title(" Tags "))

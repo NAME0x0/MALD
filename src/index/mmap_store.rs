@@ -46,8 +46,11 @@ pub fn write(path: &Path, index: &HnswIndex) -> Result<()> {
     node_ids.sort();
 
     // Build ID-to-slot mapping
-    let _id_to_slot: std::collections::HashMap<u32, usize> =
-        node_ids.iter().enumerate().map(|(i, &id)| (id, i)).collect();
+    let _id_to_slot: std::collections::HashMap<u32, usize> = node_ids
+        .iter()
+        .enumerate()
+        .map(|(i, &id)| (id, i))
+        .collect();
 
     let ids_size = count * 4;
     let deleted_size = count;

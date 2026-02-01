@@ -150,7 +150,11 @@ fn test_graph_stats() {
 fn test_graph_broken_links() {
     let dir = setup_mald_home();
     // Create a note with a broken wikilink
-    let note_path = dir.path().join("kb").join("personal").join("test-broken.md");
+    let note_path = dir
+        .path()
+        .join("kb")
+        .join("personal")
+        .join("test-broken.md");
     fs::write(
         &note_path,
         "---\ntitle: Test\n---\n\nLink to [[nonexistent-note]]\n",
@@ -382,7 +386,11 @@ fn test_capture_content_written() {
 
     // Verify the text ended up in the daily note
     let today = chrono::Local::now().format("%Y-%m-%d").to_string();
-    let daily_path = dir.path().join("kb").join("personal").join(format!("{}.md", today));
+    let daily_path = dir
+        .path()
+        .join("kb")
+        .join("personal")
+        .join(format!("{}.md", today));
     let content = fs::read_to_string(&daily_path).unwrap();
     assert!(content.contains("unique-capture-test-string-xyz"));
 }
@@ -400,7 +408,11 @@ fn test_capture_with_tag_content() {
         .success();
 
     let today = chrono::Local::now().format("%Y-%m-%d").to_string();
-    let daily_path = dir.path().join("kb").join("personal").join(format!("{}.md", today));
+    let daily_path = dir
+        .path()
+        .join("kb")
+        .join("personal")
+        .join(format!("{}.md", today));
     let content = fs::read_to_string(&daily_path).unwrap();
     assert!(content.contains("tagged-capture-test"));
     assert!(content.contains("#inbox"));
@@ -500,12 +512,12 @@ fn test_tasks_json_empty_kb() {
 fn test_tags_json_with_tagged_notes() {
     let dir = setup_mald_home();
     // Create a note with specific tags
-    let note_path = dir.path().join("kb").join("personal").join("tagged-note.md");
-    fs::write(
-        &note_path,
-        "# Tagged\n\n#rust #programming some content\n",
-    )
-    .unwrap();
+    let note_path = dir
+        .path()
+        .join("kb")
+        .join("personal")
+        .join("tagged-note.md");
+    fs::write(&note_path, "# Tagged\n\n#rust #programming some content\n").unwrap();
 
     mald_cmd()
         .env("MALD_HOME", dir.path())
@@ -638,7 +650,11 @@ fn test_multiple_captures_append() {
         .success();
 
     let today = chrono::Local::now().format("%Y-%m-%d").to_string();
-    let daily_path = dir.path().join("kb").join("personal").join(format!("{}.md", today));
+    let daily_path = dir
+        .path()
+        .join("kb")
+        .join("personal")
+        .join(format!("{}.md", today));
     let content = fs::read_to_string(&daily_path).unwrap();
     assert!(content.contains("first-capture-aaa"));
     assert!(content.contains("second-capture-bbb"));

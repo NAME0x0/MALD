@@ -12,7 +12,9 @@ pub fn extract(content: &str) -> (Value, String) {
     if let Some(end_pos) = after_open.find("\n---") {
         let yaml_str = &after_open[..end_pos];
         let body_start = end_pos + 4; // skip \n---
-        let body = after_open[body_start..].trim_start_matches('\n').to_string();
+        let body = after_open[body_start..]
+            .trim_start_matches('\n')
+            .to_string();
 
         match serde_yaml::from_str(yaml_str) {
             Ok(value) => (value, body),

@@ -22,7 +22,8 @@ pub fn update_modified_timestamp(path: &Path) -> Result<bool> {
     let now = Local::now().format("%Y-%m-%d %H:%M").to_string();
 
     // Check if modified: field already exists
-    let new_yaml = if yaml_section.contains("\nmodified:") || yaml_section.starts_with("modified:") {
+    let new_yaml = if yaml_section.contains("\nmodified:") || yaml_section.starts_with("modified:")
+    {
         // Replace existing modified line
         let lines: Vec<String> = yaml_section
             .lines()

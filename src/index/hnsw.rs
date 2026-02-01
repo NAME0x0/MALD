@@ -139,7 +139,9 @@ impl HnswIndex {
                             let mut scored: Vec<(u32, f32)> = neighbor_ids
                                 .iter()
                                 .map(|&nid| {
-                                    let d = self.nodes.get(&nid)
+                                    let d = self
+                                        .nodes
+                                        .get(&nid)
                                         .map(|n2| cosine_distance(&nv, &n2.vector))
                                         .unwrap_or(f32::MAX);
                                     (nid, d)
@@ -149,7 +151,8 @@ impl HnswIndex {
                             scored.truncate(m);
                             // Re-borrow mutably to assign
                             if let Some(neighbor) = self.nodes.get_mut(&neighbor_id) {
-                                neighbor.neighbors[l] = scored.into_iter().map(|(nid, _)| nid).collect();
+                                neighbor.neighbors[l] =
+                                    scored.into_iter().map(|(nid, _)| nid).collect();
                             }
                         }
                     }
@@ -187,12 +190,7 @@ impl HnswIndex {
 
         candidates
             .into_iter()
-            .filter(|c| {
-                self.nodes
-                    .get(&c.id)
-                    .map(|n| !n.deleted)
-                    .unwrap_or(false)
-            })
+            .filter(|c| self.nodes.get(&c.id).map(|n| !n.deleted).unwrap_or(false))
             .take(k)
             .map(|c| (c.id, c.dist))
             .collect()
@@ -262,7 +260,10 @@ impl HnswIndex {
         while let Some(closest) = candidates.pop() {
             // If closest candidate is farther than the worst result, stop
             if results.len() >= ef {
-                let worst = results.iter().map(|c| c.dist).fold(f32::NEG_INFINITY, f32::max);
+                let worst = results
+                    .iter()
+                    .map(|c| c.dist)
+                    .fold(f32::NEG_INFINITY, f32::max);
                 if closest.dist > worst {
                     break;
                 }
@@ -283,7 +284,10 @@ impl HnswIndex {
 
                 if let Some(neighbor) = self.nodes.get(&nid) {
                     let d = cosine_distance(query, &neighbor.vector);
-                    let worst_result = results.iter().map(|c| c.dist).fold(f32::NEG_INFINITY, f32::max);
+                    let worst_result = results
+                        .iter()
+                        .map(|c| c.dist)
+                        .fold(f32::NEG_INFINITY, f32::max);
 
                     if results.len() < ef || d < worst_result {
                         candidates.push(Candidate { id: nid, dist: d });
