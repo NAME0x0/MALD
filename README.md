@@ -7,19 +7,43 @@ One binary, no Electron, no sync service. Everything stays on your machine.
 
 ## Install
 
-```bash
-# From crates.io
-cargo install mald
-
-# From source
-git clone https://github.com/NAME0x0/MALD && cd MALD
-cargo install --path .
-
-# With local GGUF model support
-cargo install --path . --features gguf
+**Windows** (PowerShell — no admin needed):
+```powershell
+powershell -c "irm https://raw.githubusercontent.com/NAME0x0/MALD/main/install.ps1 | iex"
 ```
 
-Prebuilt binaries for Linux, macOS, and Windows are available on the [Releases](https://github.com/NAME0x0/MALD/releases) page.
+**macOS / Linux**:
+```bash
+curl -fsSL https://raw.githubusercontent.com/NAME0x0/MALD/main/install.sh | sh
+```
+
+**Windows (Scoop)**:
+```powershell
+scoop bucket add mald https://github.com/NAME0x0/scoop-mald
+scoop install mald
+```
+
+**Cargo** (requires [Rust toolchain](https://rustup.rs)):
+```bash
+cargo install mald
+```
+
+**From source**:
+```bash
+cargo install --git https://github.com/NAME0x0/MALD
+```
+
+**Uninstall**:
+```bash
+# Windows (script install)
+powershell -c "irm https://raw.githubusercontent.com/NAME0x0/MALD/main/uninstall.ps1 | iex"
+# Windows (scoop)
+scoop uninstall mald
+# macOS / Linux
+curl -fsSL https://raw.githubusercontent.com/NAME0x0/MALD/main/install.sh | sh -s -- --uninstall
+# Cargo
+cargo uninstall mald
+```
 
 ## Quickstart
 

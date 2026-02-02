@@ -110,6 +110,18 @@ download() {
     echo "Run 'mald' to get started."
 }
 
+# --- Uninstall support ---
+if [ "${1:-}" = "--uninstall" ]; then
+    if [ -f "$INSTALL_DIR/mald" ]; then
+        rm "$INSTALL_DIR/mald"
+        echo "Removed $INSTALL_DIR/mald"
+    else
+        echo "mald not found at $INSTALL_DIR/mald"
+    fi
+    echo "MALD has been uninstalled."
+    exit 0
+fi
+
 detect_platform
 get_latest_version
 download

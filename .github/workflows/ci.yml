@@ -105,7 +105,49 @@ jobs:
             artifacts/mald-macos-arm64 \
             artifacts/SHA256SUMS
       - name: Publish to crates.io
-        if: env.CARGO_REGISTRY_TOKEN != ''
+        if: secrets.SCOOP_MALD != ''
         env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_TOKEN }}
+          CARGO_REGISTRY_TOKEN: ${{ secrets.SCOOP_MALD }}
         run: cargo publish --token "$CARGO_REGISTRY_TOKEN"
+
+      - name: Update Scoop manifest
+        env:
+          GH_TOKEN: ${{ secrets.SCOOP_PAT }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          HASH=$(grep 'mald-windows-x64.exe' artifacts/SHA256SUMS | awk '{print $1}')
+          cat > mald.json <<'TEMPLATE'
+          {
+            "version": "VERSION_PLACEHOLDER",
+            "description": "Terminal-first PKM tool with local AI search. Markdown notes, semantic search, cited RAG chat.",
+            "homepage": "https://github.com/NAME0x0/MALD",
+            "license": "MIT",
+            "architecture": {
+              "64bit": {
+                "url": "https://github.com/NAME0x0/MALD/releases/download/vVERSION_PLACEHOLDER/mald-windows-x64.exe",
+                "hash": "HASH_PLACEHOLDER",
+                "bin": [["mald-windows-x64.exe", "mald.exe"]]
+              }
+            },
+            "checkver": "github",
+            "autoupdate": {
+              "architecture": {
+                "64bit": {
+                  "url": "https://github.com/NAME0x0/MALD/releases/download/v$version/mald-windows-x64.exe"
+                }
+              }
+            }
+          }
+          TEMPLATE
+          sed -i "s/VERSION_PLACEHOLDER/$VERSION/g; s/HASH_PLACEHOLDER/$HASH/g" mald.json
+          # Strip leading whitespace from heredoc
+          sed -i 's/^          //' mald.json
+          # Push updated manifest to scoop bucket repo
+          git clone https://x-access-token:${GH_TOKEN}@github.com/NAME0x0/scoop-mald.git scoop-repo
+          cp mald.json scoop-repo/mald.json
+          cd scoop-repo
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add mald.json
+          git commit -m "Update mald to $VERSION"
+          git push
