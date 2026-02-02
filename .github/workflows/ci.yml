@@ -105,9 +105,9 @@ jobs:
             artifacts/mald-macos-arm64 \
             artifacts/SHA256SUMS
       - name: Publish to crates.io
-        if: secrets.SCOOP_MALD != ''
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.SCOOP_MALD }}
+        if: env.CARGO_REGISTRY_TOKEN != ''
         run: cargo publish --token "$CARGO_REGISTRY_TOKEN"
 
       - name: Update Scoop manifest
