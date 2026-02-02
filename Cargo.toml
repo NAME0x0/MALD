@@ -9,6 +9,7 @@ repository = "https://github.com/NAME0x0/MALD"
 keywords = ["pkm", "knowledge-management", "markdown", "ai", "cli"]
 categories = ["command-line-utilities"]
 readme = "README.md"
+exclude = ["artifacts/", "dist/", ".github/", "install.ps1", "uninstall.ps1", "scoop-mald.json"]
 
 [[bin]]
 name = "mald"
