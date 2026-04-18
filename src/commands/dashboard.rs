@@ -23,9 +23,7 @@ pub async fn run() -> Result<()> {
         Ok(c) => c,
         Err(_) => return Ok(()), // No config yet, just show the welcome
     };
-    let default_kb = config
-        .get_string("default_kb")
-        .unwrap_or_else(|| "personal".into());
+    let default_kb = config.typed().default_kb.clone();
 
     println!(
         "MALD Dashboard — {}\n",

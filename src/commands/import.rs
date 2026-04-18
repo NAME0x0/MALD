@@ -1,7 +1,7 @@
 use anyhow::{bail, Result};
 use std::path::Path;
 
-use crate::fs::{ensure_directory, mald_home};
+use crate::fs::ensure_directory;
 
 /// Import markdown files from an external directory (Obsidian vault, Logseq graph,
 /// or any folder of .md files) into a MALD knowledge base.
@@ -11,14 +11,7 @@ pub async fn run(source: &str, kb: Option<&str>, flatten: bool) -> Result<()> {
         bail!("Source path does not exist: {source}");
     }
 
-    let config_path = mald_home().join("config").join("config.json");
-    let config = crate::config::ConfigManager::load(&config_path)?;
-    let kb_name = kb
-        .map(String::from)
-        .or_else(|| config.get_string("default_kb"))
-        .unwrap_or_else(|| "personal".into());
-
-    let kb_path = mald_home().join("kb").join(&kb_name);
+    let (_config, _typed, kb_name, kb_path) = crate::config::resolve_kb(kb)?;
     if !kb_path.exists() {
         // Auto-create the KB
         ensure_directory(&kb_path)?;

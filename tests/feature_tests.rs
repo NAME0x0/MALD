@@ -1,16 +1,17 @@
+use assert_cmd::cargo::cargo_bin_cmd;
 use assert_cmd::Command;
 use predicates::prelude::*;
 use std::fs;
 use tempfile::TempDir;
 
 fn mald_cmd() -> Command {
-    Command::cargo_bin("mald").unwrap()
+    cargo_bin_cmd!("mald")
 }
 
 fn setup_mald_home() -> TempDir {
     let dir = TempDir::new().unwrap();
-    std::env::set_var("MALD_HOME", dir.path());
-    // Run init
+    // Run init — MALD_HOME is passed per-command via .env(), not set globally
+    // (set_var is unsound when tests run in parallel across threads)
     mald_cmd()
         .env("MALD_HOME", dir.path())
         .arg("init")

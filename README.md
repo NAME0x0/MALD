@@ -1,177 +1,227 @@
 # MALD
 
-Plain markdown notes + local AI search + zero cloud dependencies.
-One binary, no Electron, no sync service. Everything stays on your machine.
+MALD is a local-first markdown knowledge workspace with a native desktop app, a terminal UI, and optional local AI.
 
-**M**arkdown **A**rchive & **L**ocalized **D**aemon — a terminal-first PKM tool with local AI (Ollama), semantic search, cited RAG chat, and a background daemon that keeps everything indexed.
+It keeps your notes as plain files on disk while adding fast search, backlinks, graph navigation, task extraction, local publishing, and cited RAG chat. There is no required cloud account, no Electron shell, and no hosted sync service sitting between you and your data.
+
+## What MALD Is For
+
+MALD is a good fit if you want:
+
+- a serious markdown workspace that stays on your machine
+- a native desktop experience without giving up CLI power
+- local knowledge management for research, study, writing, or software projects
+- plain files, knowledge bases, wikilinks, tasks, and inspectable AI answers
+- one tool that works as a GUI, a TUI, and a command-line utility
+
+MALD is probably not for you if you want:
+
+- a cloud-first collaborative docs product
+- real-time multiplayer editing
+- a block editor or database-style workspace
+- a product that hides the file system completely
+
+## What You Get
+
+- Desktop app for browsing notes, graph, search, tasks, AI chat, and settings
+- Terminal UI for keyboard-first workflows
+- Plain CLI for capture, automation, import/export, sync, diagnostics, and scripting
+- Markdown notes with wikilinks, tags, templates, and task extraction
+- Full-text search plus optional local AI over your own knowledge base
+- Background daemon for indexing and health-aware workspace services
 
 ## Install
 
-**Windows** (PowerShell — no admin needed):
+### Windows
+
+PowerShell install script:
+
 ```powershell
 powershell -c "irm https://raw.githubusercontent.com/NAME0x0/MALD/main/install.ps1 | iex"
 ```
 
-**macOS / Linux**:
-```bash
-curl -fsSL https://raw.githubusercontent.com/NAME0x0/MALD/main/install.sh | sh
-```
+Scoop:
 
-**Windows (Scoop)**:
 ```powershell
 scoop bucket add mald https://github.com/NAME0x0/scoop-mald
 scoop install mald
 ```
 
-**Cargo** (requires [Rust toolchain](https://rustup.rs)):
+### macOS / Linux
+
 ```bash
-cargo install mald
+curl -fsSL https://raw.githubusercontent.com/NAME0x0/MALD/main/install.sh | sh
 ```
 
-**From source**:
+### Build From Source
+
+From the checked-out repository:
+
+```bash
+cargo build --release
+```
+
+Or install directly from Git:
+
 ```bash
 cargo install --git https://github.com/NAME0x0/MALD
 ```
 
-**Uninstall**:
-```bash
-# Windows (script install)
-powershell -c "irm https://raw.githubusercontent.com/NAME0x0/MALD/main/uninstall.ps1 | iex"
-# Windows (scoop)
-scoop uninstall mald
-# macOS / Linux
-curl -fsSL https://raw.githubusercontent.com/NAME0x0/MALD/main/install.sh | sh -s -- --uninstall
-# Cargo
-cargo uninstall mald
+## Launch MALD
+
+Release binaries ship with the desktop app enabled by default.
+
+| Surface | Command | Best for |
+| --- | --- | --- |
+| Desktop app | `mald` | Full MALD workspace with graph, search, editor, tasks, and AI |
+| Terminal UI | `mald hub` | Keyboard-first terminal workflow |
+| Terminal UI | `mald --tui` | Same as `hub`, but explicit |
+| Text dashboard | `mald status` | Quick non-interactive status view |
+| Editor handoff | `mald open` | Open the active knowledge base in your configured editor |
+
+## Use MALD In A Specific Directory
+
+MALD works from a workspace directory called `MALD_HOME`.
+
+By default, MALD stores its data in:
+
+- Windows: `%USERPROFILE%\\.mald`
+- macOS / Linux: `~/.mald`
+
+If you want MALD to live inside a specific project or directory, point `MALD_HOME` there and initialize it once.
+
+### PowerShell
+
+```powershell
+$env:MALD_HOME = "$PWD\.mald"
+mald init
+mald
 ```
 
-## Quickstart
-
-```bash
-mald init                          # Create ~/.mald/ structure
-mald new "Meeting Notes"           # Create a note (opens $EDITOR)
-mald q "quick thought"             # Capture without opening editor
-mald search "meeting"              # Full-text search across all KBs
-mald                               # Dashboard: recent notes, tasks, stats
-```
-
-That's it. No accounts, no config, no internet required.
-
-## Core Commands
-
-```
-mald                        Dashboard (recent notes, tasks, quick actions)
-mald new "Title"            Create a note (opens editor)
-mald today                  Open/create today's daily note
-mald q "text"               Quick capture to daily note
-mald search "query"         Full-text search (all KBs)
-mald search                 Interactive TUI search
-mald edit "partial name"    Fuzzy-find and open a note
-mald tasks                  Aggregate open tasks from checkboxes
-mald tags                   List all tags with counts
-mald review                 Weekly review: stale notes, orphans, broken links
-mald import ~/ObsidianVault Import markdown from any folder
-mald rename old "New Name"  Rename + update all [[backlinks]]
-mald serve                  Local web server at http://127.0.0.1:3131
-```
-
-## JSON Output (for scripts and integrations)
+### Bash / Zsh
 
 ```bash
-mald search "query" --json    # Pipe to jq, fzf, editor plugins
-mald tasks --json             # Structured task data
-mald tags --json              # Tag counts with note lists
-mald kb list --json           # KB metadata
+export MALD_HOME="$PWD/.mald"
+mald init
+mald
 ```
 
-## AI Features (optional, requires Ollama)
+If the workspace already exists, you can skip `mald init`.
 
-AI is entirely optional. MALD works fully without it — search, notes, tasks, sync all work with zero AI setup. When you're ready:
+For one-off launches, set `MALD_HOME` and start MALD in the same shell session:
+
+```powershell
+$env:MALD_HOME = "D:\Work\client-a\.mald"
+mald
+```
 
 ```bash
-ollama pull llama3.2              # Install a model
-ollama pull nomic-embed-text      # For semantic search
-mald ai chat "what did I write about X?"  # Cited RAG chat
-mald ai summarize note1 note2     # Summarize notes
-mald ai quiz note1 --count 10     # Generate quiz questions
-mald ai briefing --days 7         # Activity briefing
+MALD_HOME="$HOME/work/client-a/.mald" mald
 ```
 
-Every AI response includes `[1]`, `[2]` citations with file paths and line numbers. Chat sessions persist across invocations.
+This is the cleanest way to keep separate MALD workspaces for different clients, repos, or domains.
 
-## Capture API (mobile/automation)
-
-`mald serve` exposes a capture endpoint for Shortcuts, Tasker, or curl:
+## Quick Start
 
 ```bash
-curl -X POST http://127.0.0.1:3131/api/capture \
-  -H "Content-Type: application/json" \
-  -d '{"text": "Idea from my phone", "tag": "inbox"}'
+mald init
+mald
+mald new "Project Brief"
+mald q "Follow up with design review"
+mald search "brief"
+mald open
 ```
 
-## Knowledge Graph
+`mald init` creates a ready-to-use workspace with:
+
+- a default `personal` knowledge base
+- config, templates, sessions, cache, and index directories
+- an initial markdown note so the workspace is not empty
+
+## Common Workflows
+
+### Capture And Notes
 
 ```bash
-mald links note-name       # Outgoing links
-mald backlinks note-name   # Who links to this note?
-mald orphans               # Notes with no incoming links
-mald graph broken-links    # Dead wikilinks
-mald graph view            # Mermaid diagram (paste into GitHub/Obsidian)
+mald new "Meeting Notes"
+mald today
+mald q "remember to update README"
+mald edit meeting
 ```
 
-## Sync (git-based)
+### Search, Links, And Review
 
 ```bash
-mald sync init     # Initialize git in ~/.mald/
-mald sync          # Commit + pull + push
-mald sync log      # Version history
-mald sync undo     # Revert last change
+mald search "authentication"
+mald backlinks auth-design
+mald links auth-design
+mald review
+mald graph stats
 ```
 
-## Import
+### Import Existing Markdown
 
 ```bash
-mald import ~/ObsidianVault              # Preserves folder structure
-mald import ~/notes --kb research        # Into specific KB
-mald import ~/notes --flatten            # Flatten into root
+mald import ~/ObsidianVault
+mald import ~/notes --kb research
 ```
 
-Copies files (never moves). Imports assets from `attachments/`, `images/`, `assets/` directories. Indexes everything automatically.
+### Serve Or Export
 
-## Architecture
-
+```bash
+mald serve
+mald export my-note
+mald export --all --output-dir ./mald-export
 ```
-~/.mald/
-├── kb/           Plain markdown files (your data)
-├── config/       JSON config (dot-notation access)
-├── index/        HNSW vector index + SQLite FTS5
+
+## Optional Local AI
+
+AI is optional. MALD remains useful without it.
+
+When you want local AI features, MALD integrates with Ollama:
+
+```bash
+mald ai setup
+mald ai index personal
+mald ai chat "What did I write about authentication?"
+```
+
+AI responses are grounded in your local workspace, and MALD is designed around inspectable results rather than opaque chat output.
+
+## Workspace Layout
+
+```text
+MALD_HOME/
+├── kb/           Knowledge bases and markdown notes
+├── config/       Configuration
+├── index/        Search and retrieval data
+├── sessions/     Chat and session history
 ├── templates/    Note templates
 ├── plugins/      Custom executable plugins
-├── trash/        Deleted files (recoverable)
-└── logs/         Daemon logs
+├── cache/        Local cache
+└── logs/         Daemon and runtime logs
 ```
 
-## Configuration
+## Useful Commands
 
 ```bash
-mald config set editor code            # VS Code
-mald config set ai.default_model llama3.2
-mald config set hooks.on_save "..."    # Run on every file save
-mald doctor                            # Self-diagnostics
+mald doctor
+mald daemon status
+mald kb list
+mald tasks --json
+mald search "query" --json
+mald sync init
+mald sync
 ```
 
-## Extended Help
+## Philosophy
 
-```bash
-mald help-topic ai         # AI setup, troubleshooting
-mald help-topic search     # Search backends, date filtering
-mald help-topic sync       # Git sync workflow
-mald help-topic templates  # Template variables
-mald help-topic daemon     # Background indexer
-mald help-topic plugins    # Plugin system
-mald help-topic graph      # Knowledge graph
-mald help-topic tasks      # Task aggregation
-```
+MALD is built on a simple premise:
+
+- your knowledge base should stay in plain files
+- local tools should feel fast and inspectable
+- AI should be optional, grounded, and subordinate to the data
+- the same workspace should be usable from a desktop app, a terminal UI, and scripts
 
 ## License
 

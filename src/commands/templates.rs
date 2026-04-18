@@ -2,7 +2,7 @@ use anyhow::{bail, Result};
 use chrono::Local;
 
 use crate::config::ConfigManager;
-use crate::fs::{ensure_directory, mald_home};
+use crate::fs::{ensure_directory, mald_home, slugify};
 
 /// Create a note from a template. Templates live in ~/.mald/templates/.
 /// Variables: {{title}}, {{date}}, {{time}}, {{datetime}}, {{kb}}, {{author}}
@@ -11,12 +11,7 @@ pub async fn create_from_template(
     title: &str,
     kb: Option<&str>,
 ) -> Result<()> {
-    let config_path = mald_home().join("config").join("config.json");
-    let config = ConfigManager::load(&config_path)?;
-    let kb_name = kb
-        .map(String::from)
-        .or_else(|| config.get_string("default_kb"))
-        .unwrap_or_else(|| "personal".into());
+    let (_config, typed, kb_name, _kb_path) = crate::config::resolve_kb(kb)?;
 
     let template_dir = mald_home().join("templates");
     let template_path = template_dir.join(format!("{template_name}.md"));
@@ -57,7 +52,7 @@ pub async fn create_from_template(
 
     println!("{}", filepath.display());
 
-    let editor = config.get_string("editor").unwrap_or_else(|| "nvim".into());
+    let editor = typed.editor.clone();
     std::process::Command::new(&editor)
         .arg(filepath.to_str().unwrap())
         .status()?;
@@ -157,7 +152,7 @@ pub async fn create(name: &str) -> Result<()> {
     // Open in editor
     let config_path = mald_home().join("config").join("config.json");
     let config = ConfigManager::load(&config_path)?;
-    let editor = config.get_string("editor").unwrap_or_else(|| "nvim".into());
+    let editor = config.typed().editor.clone();
     std::process::Command::new(&editor)
         .arg(path.to_str().unwrap())
         .status()?;
@@ -189,7 +184,7 @@ pub async fn edit(name: &str) -> Result<()> {
 
     let config_path = mald_home().join("config").join("config.json");
     let config = ConfigManager::load(&config_path)?;
-    let editor = config.get_string("editor").unwrap_or_else(|| "nvim".into());
+    let editor = config.typed().editor.clone();
     std::process::Command::new(&editor)
         .arg(path.to_str().unwrap())
         .status()?;
@@ -212,17 +207,6 @@ fn list_template_names() -> Vec<String> {
                 .map(|s| s.to_string_lossy().to_string())
         })
         .collect()
-}
-
-fn slugify(s: &str) -> String {
-    s.to_lowercase()
-        .chars()
-        .map(|c| if c.is_alphanumeric() { c } else { '-' })
-        .collect::<String>()
-        .split('-')
-        .filter(|s| !s.is_empty())
-        .collect::<Vec<&str>>()
-        .join("-")
 }
 
 #[cfg(test)]

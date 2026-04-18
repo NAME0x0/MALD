@@ -1,20 +1,10 @@
 use anyhow::{bail, Result};
 
-use crate::config::ConfigManager;
-use crate::fs::mald_home;
-
 /// Fuzzy-find a note and open it in the editor.
 /// If the query matches exactly one note, opens it directly.
 /// If multiple matches, shows a selection list.
 pub async fn run(query: &str, kb: Option<&str>) -> Result<()> {
-    let config_path = mald_home().join("config").join("config.json");
-    let config = ConfigManager::load(&config_path)?;
-    let kb_name = kb
-        .map(String::from)
-        .or_else(|| config.get_string("default_kb"))
-        .unwrap_or_else(|| "personal".into());
-
-    let kb_path = mald_home().join("kb").join(&kb_name);
+    let (_config, typed, kb_name, kb_path) = crate::config::resolve_kb(kb)?;
     if !kb_path.exists() {
         return Err(crate::errors::bail_ctx(
             format!("Knowledge base '{kb_name}' not found"),
@@ -92,7 +82,7 @@ pub async fn run(query: &str, kb: Option<&str>) -> Result<()> {
         matches[idx].1
     };
 
-    let editor = config.get_string("editor").unwrap_or_else(|| "nvim".into());
+    let editor = typed.editor.clone();
     std::process::Command::new(&editor)
         .arg(path.to_str().unwrap())
         .status()?;

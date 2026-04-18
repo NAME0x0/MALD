@@ -1,16 +1,9 @@
 use anyhow::{bail, Result};
 
-use crate::fs::mald_home;
 use crate::parser::graph;
 
-fn resolve_kb(kb: Option<&str>) -> Result<std::path::PathBuf> {
-    let config_path = mald_home().join("config").join("config.json");
-    let config = crate::config::ConfigManager::load(&config_path)?;
-    let kb_name = kb
-        .map(String::from)
-        .or_else(|| config.get_string("default_kb"))
-        .unwrap_or_else(|| "personal".into());
-    let kb_path = mald_home().join("kb").join(&kb_name);
+fn resolve_kb_path(kb: Option<&str>) -> Result<std::path::PathBuf> {
+    let (_config, _typed, kb_name, kb_path) = crate::config::resolve_kb(kb)?;
     if !kb_path.exists() {
         bail!("Knowledge base '{kb_name}' not found");
     }
@@ -18,7 +11,7 @@ fn resolve_kb(kb: Option<&str>) -> Result<std::path::PathBuf> {
 }
 
 pub async fn links(note: &str, kb: Option<&str>) -> Result<()> {
-    let kb_path = resolve_kb(kb)?;
+    let kb_path = resolve_kb_path(kb)?;
     let docs = graph::parse_knowledge_base(&kb_path)?;
 
     let target_lower = note.to_lowercase();
@@ -60,7 +53,7 @@ pub async fn links(note: &str, kb: Option<&str>) -> Result<()> {
 }
 
 pub async fn backlinks(note: &str, kb: Option<&str>) -> Result<()> {
-    let kb_path = resolve_kb(kb)?;
+    let kb_path = resolve_kb_path(kb)?;
     let docs = graph::parse_knowledge_base(&kb_path)?;
     let results = graph::find_backlinks(&docs, note);
 
@@ -87,7 +80,7 @@ pub async fn backlinks(note: &str, kb: Option<&str>) -> Result<()> {
 }
 
 pub async fn orphans(kb: Option<&str>) -> Result<()> {
-    let kb_path = resolve_kb(kb)?;
+    let kb_path = resolve_kb_path(kb)?;
     let docs = graph::parse_knowledge_base(&kb_path)?;
     let orphaned = graph::find_orphaned_files(&docs);
 
@@ -115,7 +108,7 @@ pub async fn orphans(kb: Option<&str>) -> Result<()> {
 
 /// Show broken wikilinks (links to non-existent notes).
 pub async fn broken_links(kb: Option<&str>) -> Result<()> {
-    let kb_path = resolve_kb(kb)?;
+    let kb_path = resolve_kb_path(kb)?;
     let docs = graph::parse_knowledge_base(&kb_path)?;
     let broken = crate::commands::review::find_broken_links(&docs);
 
@@ -132,7 +125,7 @@ pub async fn broken_links(kb: Option<&str>) -> Result<()> {
 
 /// Output a Mermaid graph of the KB link structure.
 pub async fn view(kb: Option<&str>) -> Result<()> {
-    let kb_path = resolve_kb(kb)?;
+    let kb_path = resolve_kb_path(kb)?;
     let docs = graph::parse_knowledge_base(&kb_path)?;
 
     println!("```mermaid");
@@ -175,7 +168,7 @@ pub async fn view(kb: Option<&str>) -> Result<()> {
 
 /// Stats about the knowledge graph.
 pub async fn stats(kb: Option<&str>) -> Result<()> {
-    let kb_path = resolve_kb(kb)?;
+    let kb_path = resolve_kb_path(kb)?;
     let docs = graph::parse_knowledge_base(&kb_path)?;
 
     let total_notes = docs.len();

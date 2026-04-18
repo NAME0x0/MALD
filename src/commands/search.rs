@@ -37,11 +37,10 @@ pub async fn run(query: &str, k: usize, since: Option<&str>, json: bool) -> Resu
         let hnsw_path = index_dir.join("hnsw.bin");
 
         if hnsw_path.exists() {
+            let typed = config.typed();
             let client = crate::ai::ollama::OllamaClient::from_config(&config);
             if client.is_running().await {
-                let embedding_model = config
-                    .get_string("ai.embedding_model")
-                    .unwrap_or_else(|| "nomic-embed-text".into());
+                let embedding_model = typed.ai.embedding_model.clone();
                 if let Ok(query_vec) = client.embeddings(&embedding_model, query).await {
                     if let Ok(index) = HnswIndex::load(&hnsw_path) {
                         let results = index.search(&query_vec, k);
@@ -144,4 +143,53 @@ fn parse_since(s: &str) -> String {
 /// Interactive fuzzy search TUI.
 pub fn interactive() -> Result<()> {
     crate::commands::tui::run_search_tui()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_since_days() {
+        let result = parse_since("7d");
+        // Should be a YYYY-MM-DD string 7 days ago
+        assert_eq!(result.len(), 10, "Date string should be YYYY-MM-DD format");
+        assert!(result.contains('-'), "Date should contain dashes");
+
+        // Verify it's actually ~7 days ago
+        let expected = (chrono::Local::now() - chrono::Duration::days(7))
+            .format("%Y-%m-%d")
+            .to_string();
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_parse_since_large_days() {
+        let result = parse_since("30d");
+        let expected = (chrono::Local::now() - chrono::Duration::days(30))
+            .format("%Y-%m-%d")
+            .to_string();
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_parse_since_iso_date_passthrough() {
+        // A non-"Nd" string should be passed through as-is
+        let result = parse_since("2024-01-15");
+        assert_eq!(result, "2024-01-15");
+    }
+
+    #[test]
+    fn test_parse_since_invalid_falls_through() {
+        // "invalid" is not "Nd" format, so it's treated as an ISO date passthrough
+        let result = parse_since("invalid");
+        assert_eq!(result, "invalid");
+    }
+
+    #[test]
+    fn test_parse_since_weeks_not_supported() {
+        // "2w" is not "Nd", so it falls through to passthrough
+        let result = parse_since("2w");
+        assert_eq!(result, "2w");
+    }
 }

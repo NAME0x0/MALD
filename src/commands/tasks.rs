@@ -1,6 +1,5 @@
 use anyhow::Result;
 
-use crate::config::ConfigManager;
 use crate::fs::mald_home;
 
 /// Aggregate all open tasks (`- [ ]`) across all notes.
@@ -24,13 +23,7 @@ pub async fn list(kb: Option<&str>, all_kbs: bool, json: bool) -> Result<()> {
             .map(|e| e.path())
             .collect()
     } else {
-        let config_path = home.join("config").join("config.json");
-        let config = ConfigManager::load(&config_path)?;
-        let kb_name = kb
-            .map(String::from)
-            .or_else(|| config.get_string("default_kb"))
-            .unwrap_or_else(|| "personal".into());
-        let p = kb_dir.join(&kb_name);
+        let (_config, _typed, kb_name, p) = crate::config::resolve_kb(kb)?;
         if !p.exists() {
             if json {
                 println!("[]");

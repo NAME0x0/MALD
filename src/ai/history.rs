@@ -100,20 +100,21 @@ mod tests {
 
     #[test]
     fn test_session_roundtrip() {
+        // Avoid std::env::set_var — it is unsound when tests run in parallel.
+        // Instead, manually create the session dir and write the JSON directly.
         let dir = TempDir::new().unwrap();
-        std::env::set_var("MALD_HOME", dir.path().join(".mald"));
+        let chat_dir = dir.path().join("sessions").join("chat");
+        std::fs::create_dir_all(&chat_dir).unwrap();
 
         let mut session = ChatSession::new("personal");
         session.add("user", "Hello");
         session.add("assistant", "Hi there");
-        session.save().unwrap();
 
-        let loaded = ChatSession::load(
-            &dir.path()
-                .join(".mald/sessions/chat")
-                .join(format!("{}.json", session.id)),
-        )
-        .unwrap();
+        let path = chat_dir.join(format!("{}.json", session.id));
+        let json = serde_json::to_string_pretty(&session).unwrap();
+        std::fs::write(&path, json).unwrap();
+
+        let loaded = ChatSession::load(&path).unwrap();
         assert_eq!(loaded.messages.len(), 2);
         assert_eq!(loaded.kb, "personal");
     }

@@ -1,9 +1,6 @@
 use anyhow::{bail, Result};
 use pulldown_cmark::{html, Parser};
 
-use crate::config::ConfigManager;
-use crate::fs::mald_home;
-
 /// Export a note to HTML. Strips frontmatter, renders markdown to HTML,
 /// wraps in a minimal styled document.
 pub async fn run(note: &str, kb: Option<&str>, output: Option<&str>) -> Result<()> {
@@ -25,6 +22,7 @@ pub async fn run(note: &str, kb: Option<&str>, output: Option<&str>) -> Result<(
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{title}</title>
+<link rel="icon" href="{}" type="image/svg+xml">
 <style>
   body {{ max-width: 720px; margin: 2rem auto; padding: 0 1rem; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.6; color: #1a1a1a; }}
   h1,h2,h3 {{ margin-top: 1.5em; }}
@@ -44,7 +42,8 @@ pub async fn run(note: &str, kb: Option<&str>, output: Option<&str>) -> Result<(
 {html_body}
 <footer>Exported from MALD</footer>
 </body>
-</html>"#
+</html>"#,
+        crate::web_assets::favicon_data_uri()
     );
 
     let out_path = if let Some(o) = output {
@@ -61,14 +60,7 @@ pub async fn run(note: &str, kb: Option<&str>, output: Option<&str>) -> Result<(
 
 /// Export all notes from a KB to a directory of HTML files or plain markdown.
 pub async fn export_all(kb: Option<&str>, output_dir: &str, format: &str) -> Result<()> {
-    let config_path = mald_home().join("config").join("config.json");
-    let config = ConfigManager::load(&config_path)?;
-    let kb_name = kb
-        .map(String::from)
-        .or_else(|| config.get_string("default_kb"))
-        .unwrap_or_else(|| "personal".into());
-
-    let kb_path = mald_home().join("kb").join(&kb_name);
+    let (_config, _typed, kb_name, kb_path) = crate::config::resolve_kb(kb)?;
     if !kb_path.exists() {
         bail!("Knowledge base '{kb_name}' not found");
     }
@@ -93,11 +85,13 @@ pub async fn export_all(kb: Option<&str>, output_dir: &str, format: &str) -> Res
 
                 let full_html = format!(
                     "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><title>{title}</title>\
+                    <link rel=\"icon\" href=\"{}\" type=\"image/svg+xml\">\
                     <style>body{{max-width:720px;margin:2rem auto;padding:0 1rem;\
                     font-family:sans-serif;line-height:1.6}}code{{background:#f4f4f4;\
                     padding:0.2em 0.4em;border-radius:3px}}pre{{background:#f4f4f4;\
                     padding:1em;border-radius:6px;overflow-x:auto}}</style></head>\
-                    <body>{html_body}</body></html>"
+                    <body>{html_body}</body></html>",
+                    crate::web_assets::favicon_data_uri()
                 );
                 std::fs::write(out.join(format!("{stem}.html")), full_html)?;
             }
@@ -119,15 +113,7 @@ pub async fn export_all(kb: Option<&str>, output_dir: &str, format: &str) -> Res
 }
 
 fn strip_frontmatter(content: &str) -> String {
-    let trimmed = content.trim_start();
-    if !trimmed.starts_with("---") {
-        return content.to_string();
-    }
-    if let Some(end) = trimmed[3..].find("\n---") {
-        trimmed[3 + end + 4..].trim_start_matches('\n').to_string()
-    } else {
-        content.to_string()
-    }
+    crate::parser::frontmatter::strip(content)
 }
 
 fn extract_title(content: &str, fallback: &str) -> String {

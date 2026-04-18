@@ -388,7 +388,7 @@ impl TuiApp {
         let config = crate::config::ConfigManager::load(&config_path).ok();
         let ext_editor = config
             .as_ref()
-            .and_then(|c| c.get_string("editor"))
+            .map(|c| c.typed().editor.clone())
             .unwrap_or_else(|| "nvim".into());
 
         let meta_path = home.join("index").join("metadata.db");
@@ -585,7 +585,7 @@ pub fn run_search_tui() -> Result<()> {
     if let Ok(Some(path)) = result {
         let config_path = mald_home().join("config").join("config.json");
         let config = crate::config::ConfigManager::load(&config_path)?;
-        let editor = config.get_string("editor").unwrap_or_else(|| "nvim".into());
+        let editor = config.typed().editor.clone();
         std::process::Command::new(&editor).arg(&path).status()?;
     }
     Ok(())

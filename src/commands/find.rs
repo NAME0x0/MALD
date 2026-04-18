@@ -13,7 +13,7 @@ use crate::index::metadata::MetadataStore;
 pub async fn run(query: Vec<String>, _kb: Option<&str>) -> Result<()> {
     let config_path = mald_home().join("config").join("config.json");
     let config = ConfigManager::load(&config_path)?;
-    let editor = config.get_string("editor").unwrap_or_else(|| "nvim".into());
+    let editor = config.typed().editor.clone();
 
     // Ensure index exists
     let kb_dir = mald_home().join("kb");

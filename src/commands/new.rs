@@ -1,20 +1,16 @@
 use anyhow::{bail, Result};
 use chrono::Local;
+use std::path::PathBuf;
 
-use crate::config::ConfigManager;
-use crate::fs::{ensure_directory, mald_home};
+use crate::fs::{ensure_directory, mald_home, slugify};
 
-pub async fn run(title: &str, kb: Option<&str>) -> Result<()> {
-    let config_path = mald_home().join("config").join("config.json");
-    let config = ConfigManager::load(&config_path)?;
-    let kb_name = kb
-        .map(String::from)
-        .or_else(|| config.get_string("default_kb"))
-        .unwrap_or_else(|| "personal".into());
-
-    let kb_path = mald_home().join("kb").join(&kb_name);
+pub async fn create_note(title: &str, kb: Option<&str>) -> Result<PathBuf> {
+    let (_config, _typed, kb_name, kb_path) = crate::config::resolve_kb(kb)?;
     if !kb_path.exists() {
         bail!("Knowledge base '{kb_name}' not found. Create it with `mald kb create {kb_name}`");
+    }
+    if title.trim().is_empty() {
+        bail!("Note title cannot be empty");
     }
 
     let now = Local::now();
@@ -43,13 +39,19 @@ pub async fn run(title: &str, kb: Option<&str>) -> Result<()> {
     let meta = crate::index::metadata::MetadataStore::open(&meta_path)?;
     meta.index_document_fts(&filepath.to_string_lossy(), title, &content, &hash)?;
 
-    println!("{}", filepath.display());
-
-    // Run on_create hook
     super::hooks::run_hook("on_create", Some(&filepath));
 
+    Ok(filepath)
+}
+
+pub async fn run(title: &str, kb: Option<&str>) -> Result<()> {
+    let (_config, typed, _kb_name, _kb_path) = crate::config::resolve_kb(kb)?;
+    let filepath = create_note(title, kb).await?;
+
+    println!("{}", filepath.display());
+
     // Open in editor
-    let editor = config.get_string("editor").unwrap_or_else(|| "nvim".into());
+    let editor = typed.editor.clone();
     std::process::Command::new(&editor)
         .arg(filepath.to_str().unwrap())
         .status()?;
@@ -58,14 +60,7 @@ pub async fn run(title: &str, kb: Option<&str>) -> Result<()> {
 }
 
 pub async fn today(kb: Option<&str>) -> Result<()> {
-    let config_path = mald_home().join("config").join("config.json");
-    let config = ConfigManager::load(&config_path)?;
-    let kb_name = kb
-        .map(String::from)
-        .or_else(|| config.get_string("default_kb"))
-        .unwrap_or_else(|| "personal".into());
-
-    let kb_path = mald_home().join("kb").join(&kb_name);
+    let (_config, typed, kb_name, kb_path) = crate::config::resolve_kb(kb)?;
     if !kb_path.exists() {
         bail!("Knowledge base '{kb_name}' not found. Create it with `mald kb create {kb_name}`");
     }
@@ -98,21 +93,10 @@ pub async fn today(kb: Option<&str>) -> Result<()> {
 
     println!("{}", filepath.display());
 
-    let editor = config.get_string("editor").unwrap_or_else(|| "nvim".into());
+    let editor = typed.editor.clone();
     std::process::Command::new(&editor)
         .arg(filepath.to_str().unwrap())
         .status()?;
 
     Ok(())
-}
-
-fn slugify(s: &str) -> String {
-    s.to_lowercase()
-        .chars()
-        .map(|c| if c.is_alphanumeric() { c } else { '-' })
-        .collect::<String>()
-        .split('-')
-        .filter(|s| !s.is_empty())
-        .collect::<Vec<&str>>()
-        .join("-")
 }

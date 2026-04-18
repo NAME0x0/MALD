@@ -7,13 +7,18 @@ mod config;
 mod daemon;
 mod errors;
 mod fs;
+#[cfg(feature = "gui")]
+mod gui;
 mod index;
 mod parser;
+mod web_assets;
 
 use clap::Parser;
+use std::time::Instant;
 
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
+fn main() -> anyhow::Result<()> {
+    let startup_time = Instant::now();
+
     // Set up logging: stderr for interactive, file for daemon
     let env_filter = tracing_subscriber::EnvFilter::from_default_env()
         .add_directive("mald=info".parse().unwrap());
@@ -46,12 +51,81 @@ async fn main() -> anyhow::Result<()> {
         tracing_subscriber::fmt().with_env_filter(env_filter).init();
     }
 
+    tracing::debug!(
+        elapsed_ms = startup_time.elapsed().as_millis(),
+        "logging initialized"
+    );
+
     // Auto-start daemon if MALD is set up (silent, non-blocking)
     if !is_daemon {
         commands::daemon::ensure_running();
+        tracing::debug!(
+            elapsed_ms = startup_time.elapsed().as_millis(),
+            "daemon check complete"
+        );
     }
 
     let cli = cli::Cli::parse();
+    tracing::debug!(
+        elapsed_ms = startup_time.elapsed().as_millis(),
+        "CLI parsed"
+    );
+
+    // GUI case: no args, no --tui, and stdout IS a terminal → launch GPU app OUTSIDE tokio runtime
+    // (iced creates its own runtime internally, can't nest in tokio)
+    // When stdout is NOT a terminal (e.g., tests, pipes), we go through cli::run() which shows the dashboard.
+    #[cfg(feature = "gui")]
+    {
+        let is_interactive = std::io::IsTerminal::is_terminal(&std::io::stdout());
+        if cli.command.is_none() && cli.args.is_empty() && !cli.tui && !is_daemon && is_interactive
+        {
+            let startup_ms = startup_time.elapsed().as_millis();
+            tracing::info!(startup_ms, "launching GUI");
+            if startup_ms > 500 {
+                tracing::warn!(startup_ms, "startup exceeded 500ms target");
+            }
+            if let Err(err) = gui::run() {
+                use crossterm::style::Stylize;
+                eprintln!("{}: {:?}", "error".red().bold(), err);
+                std::process::exit(1);
+            }
+            return Ok(());
+        }
+    }
+
+    // Everything else needs tokio runtime
+    let startup_ms = startup_time.elapsed().as_millis();
+    tracing::debug!(startup_ms, "entering tokio runtime");
+    tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()?
+        .block_on(async_main(cli, is_daemon, startup_time))
+}
+
+async fn async_main(cli: cli::Cli, is_daemon: bool, startup_time: Instant) -> anyhow::Result<()> {
+    // Routing: --tui flag → ratatui TUI
+    if cli.tui && cli.command.is_none() && cli.args.is_empty() {
+        let startup_ms = startup_time.elapsed().as_millis();
+        tracing::info!(startup_ms, "launching TUI");
+        if startup_ms > 500 {
+            tracing::warn!(startup_ms, "startup exceeded 500ms target");
+        }
+        if let Err(err) = commands::tui::run_full_tui().await {
+            use crossterm::style::Stylize;
+            eprintln!("{}: {:?}", "error".red().bold(), err);
+            std::process::exit(1);
+        }
+        return Ok(());
+    }
+
+    let _ = is_daemon; // Silence unused warning
+
+    // Log startup time for CLI commands
+    tracing::debug!(
+        elapsed_ms = startup_time.elapsed().as_millis(),
+        "executing command"
+    );
+
     if let Err(err) = cli::run(cli).await {
         if let Some(ctx) = errors::extract_contextual(&err) {
             ctx.print();

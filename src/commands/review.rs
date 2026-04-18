@@ -1,19 +1,9 @@
 use anyhow::Result;
 use chrono::Local;
 
-use crate::config::ConfigManager;
-use crate::fs::mald_home;
-
 /// Weekly review: surfaces modified notes, stale notes, orphans, open tasks.
 pub async fn run(kb: Option<&str>, days: u64) -> Result<()> {
-    let home = mald_home();
-    let config_path = home.join("config").join("config.json");
-    let config = ConfigManager::load(&config_path)?;
-    let kb_name = kb
-        .map(String::from)
-        .or_else(|| config.get_string("default_kb"))
-        .unwrap_or_else(|| "personal".into());
-    let kb_path = home.join("kb").join(&kb_name);
+    let (_config, _typed, kb_name, kb_path) = crate::config::resolve_kb(kb)?;
 
     if !kb_path.exists() {
         println!("Knowledge base '{kb_name}' not found.");

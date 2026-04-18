@@ -2,6 +2,9 @@ use anyhow::{Context, Result};
 use rusqlite::{params, Connection};
 use std::path::Path;
 
+/// MetadataStore with SQLite connection.
+/// Uses `prepare_cached` internally for frequently-called queries
+/// to avoid repeated statement compilation overhead.
 pub struct MetadataStore {
     conn: Connection,
 }
@@ -47,6 +50,8 @@ impl MetadataStore {
                 vector_offset INTEGER,
                 FOREIGN KEY (doc_id) REFERENCES documents(id)
             );
+            -- Index for fast chunk deletion and joins by document
+            CREATE INDEX IF NOT EXISTS idx_chunks_doc_id ON chunks(doc_id);
             CREATE VIRTUAL TABLE IF NOT EXISTS documents_fts USING fts5(
                 title, content, content='documents', content_rowid='id'
             );
@@ -103,7 +108,7 @@ impl MetadataStore {
     }
 
     pub fn get_chunk(&self, id: u32) -> Result<Option<ChunkRecord>> {
-        let mut stmt = self.conn.prepare(
+        let mut stmt = self.conn.prepare_cached(
             "SELECT c.id, d.path, c.content, c.start_line, c.end_line, c.vector_offset
              FROM chunks c JOIN documents d ON c.doc_id = d.id
              WHERE c.id = ?1",
@@ -128,7 +133,7 @@ impl MetadataStore {
     pub fn needs_reindex(&self, path: &str, content_hash: &str) -> Result<bool> {
         let mut stmt = self
             .conn
-            .prepare("SELECT content_hash FROM documents WHERE path = ?1")?;
+            .prepare_cached("SELECT content_hash FROM documents WHERE path = ?1")?;
 
         let existing: Option<String> = stmt.query_row(params![path], |row| row.get(0)).ok();
 
@@ -147,8 +152,9 @@ impl MetadataStore {
     }
 
     /// Full-text search using FTS5. Works without AI, instant results.
+    /// Uses cached prepared statements for repeated query performance.
     pub fn fts_search(&self, query: &str, limit: usize) -> Result<Vec<FtsResult>> {
-        let mut stmt = self.conn.prepare(
+        let mut stmt = self.conn.prepare_cached(
             "SELECT d.path, d.title, snippet(documents_fts, 1, '>>>', '<<<', '...', 64), rank
              FROM documents_fts
              JOIN documents d ON d.id = documents_fts.rowid
@@ -166,7 +172,10 @@ impl MetadataStore {
                     rank: row.get(3)?,
                 })
             })?
-            .filter_map(|r| r.ok())
+            .filter_map(|r| {
+                r.map_err(|e| tracing::debug!("FTS result row error: {}", e))
+                    .ok()
+            })
             .collect();
 
         Ok(results)
@@ -188,13 +197,14 @@ impl MetadataStore {
     }
 
     /// FTS search filtered by modification date.
+    /// Uses cached prepared statements for repeated query performance.
     pub fn fts_search_since(
         &self,
         query: &str,
         since: &str,
         limit: usize,
     ) -> Result<Vec<FtsResult>> {
-        let mut stmt = self.conn.prepare(
+        let mut stmt = self.conn.prepare_cached(
             "SELECT d.path, d.title, snippet(documents_fts, 1, '>>>', '<<<', '...', 64), rank
              FROM documents_fts
              JOIN documents d ON d.id = documents_fts.rowid
@@ -212,7 +222,10 @@ impl MetadataStore {
                     rank: row.get(3)?,
                 })
             })?
-            .filter_map(|r| r.ok())
+            .filter_map(|r| {
+                r.map_err(|e| tracing::debug!("FTS result row error: {}", e))
+                    .ok()
+            })
             .collect();
 
         Ok(results)

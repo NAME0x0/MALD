@@ -83,7 +83,7 @@ pub async fn run() -> Result<()> {
 
     // Suggest setup if editor isn't in PATH
     let config = ConfigManager::load(&config_path)?;
-    let editor = config.get_string("editor").unwrap_or_else(|| "nvim".into());
+    let editor = config.typed().editor.clone();
     let editor_missing = !crate::commands::doctor::which_exists_pub(&editor);
     if editor_missing {
         println!("\nTip: '{editor}' not found in PATH. Run `mald setup` to configure your editor.");

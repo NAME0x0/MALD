@@ -1,20 +1,12 @@
 use anyhow::{bail, Result};
 use chrono::Local;
 
-use crate::config::ConfigManager;
 use crate::fs::{ensure_directory, mald_home};
 
 /// Append a thought to today's daily note. Creates the note if it doesn't exist.
 /// This is the fastest path from thought to disk — no editor, no friction.
 pub async fn run(text: &str, kb: Option<&str>, tag: Option<&str>) -> Result<()> {
-    let config_path = mald_home().join("config").join("config.json");
-    let config = ConfigManager::load(&config_path)?;
-    let kb_name = kb
-        .map(String::from)
-        .or_else(|| config.get_string("default_kb"))
-        .unwrap_or_else(|| "personal".into());
-
-    let kb_path = mald_home().join("kb").join(&kb_name);
+    let (_config, _typed, kb_name, kb_path) = crate::config::resolve_kb(kb)?;
     if !kb_path.exists() {
         bail!("Knowledge base '{kb_name}' not found");
     }

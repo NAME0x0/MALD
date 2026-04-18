@@ -1,8 +1,134 @@
 use anyhow::{Context, Result};
+use serde::Deserialize;
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 
 const CURRENT_CONFIG_VERSION: u64 = 2;
+
+// ---------------------------------------------------------------------------
+// Typed configuration structs (read-only, deserialized from the same JSON)
+// ---------------------------------------------------------------------------
+
+/// Typed, compile-time validated configuration.
+///
+/// Deserializes from the same JSON file that `ConfigManager` uses. All fields
+/// have sensible defaults that match `ConfigManager::default_config()`. This
+/// struct is **read-only** -- writing still goes through `ConfigManager::set()`.
+#[derive(Debug, Deserialize, Clone)]
+#[serde(default)]
+pub struct TypedConfig {
+    pub config_version: u64,
+    pub editor: String,
+    pub default_kb: String,
+    pub ai: AiConfig,
+    pub daemon: DaemonConfig,
+    pub session: SessionConfig,
+    pub hooks: HooksConfig,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+#[serde(default)]
+pub struct AiConfig {
+    pub backend: String,
+    pub default_model: String,
+    pub ollama_url: String,
+    pub gguf_model_path: String,
+    pub embedding_model: String,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+#[serde(default)]
+pub struct DaemonConfig {
+    pub port: u16,
+    pub auto_start: bool,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+#[serde(default)]
+pub struct SessionConfig {
+    pub shell: String,
+    pub tmux_enabled: bool,
+}
+
+#[derive(Debug, Deserialize, Clone, Default)]
+#[serde(default)]
+pub struct HooksConfig {
+    pub on_create: Option<String>,
+    pub on_save: Option<String>,
+    pub on_daily: Option<String>,
+}
+
+// --- Default impls (match ConfigManager::default_config()) ---
+
+impl Default for TypedConfig {
+    fn default() -> Self {
+        Self {
+            config_version: CURRENT_CONFIG_VERSION,
+            editor: "nvim".into(),
+            default_kb: "personal".into(),
+            ai: AiConfig::default(),
+            daemon: DaemonConfig::default(),
+            session: SessionConfig::default(),
+            hooks: HooksConfig::default(),
+        }
+    }
+}
+
+impl Default for AiConfig {
+    fn default() -> Self {
+        Self {
+            backend: "ollama".into(),
+            default_model: "llama3.2".into(),
+            ollama_url: "http://localhost:11434".into(),
+            gguf_model_path: String::new(),
+            embedding_model: "nomic-embed-text".into(),
+        }
+    }
+}
+
+impl Default for DaemonConfig {
+    fn default() -> Self {
+        Self {
+            port: 7433,
+            auto_start: true,
+        }
+    }
+}
+
+impl Default for SessionConfig {
+    fn default() -> Self {
+        Self {
+            shell: "powershell".into(),
+            tmux_enabled: false,
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Helper: resolve a KB name from an optional CLI arg + config default
+// ---------------------------------------------------------------------------
+
+/// Resolve the knowledge base name and path from an optional CLI argument.
+///
+/// Returns `(ConfigManager, TypedConfig, kb_name, kb_path)`.
+/// The KB path is **not** validated for existence -- callers should check if needed.
+pub fn resolve_kb(kb: Option<&str>) -> Result<(ConfigManager, TypedConfig, String, PathBuf)> {
+    let config_path = crate::fs::mald_home().join("config").join("config.json");
+    let config = ConfigManager::load(&config_path)?;
+    let typed = config.typed();
+    let kb_name = kb
+        .map(String::from)
+        .unwrap_or_else(|| typed.default_kb.clone());
+    let kb_path = crate::fs::mald_home().join("kb").join(&kb_name);
+    Ok((config, typed, kb_name, kb_path))
+}
+
+/// Load config and return both the mutable manager and the typed snapshot.
+pub fn load_typed(path: &Path) -> Result<(ConfigManager, TypedConfig)> {
+    let mgr = ConfigManager::load(path)?;
+    let typed = mgr.typed();
+    Ok((mgr, typed))
+}
 
 pub struct ConfigManager {
     path: PathBuf,
@@ -20,6 +146,28 @@ fn merge_missing(target: &mut Value, defaults: &Value) {
             }
         }
     }
+}
+
+/// Validate a dot-notation config key.
+/// Rejects empty keys, empty segments, leading/trailing dots, and control characters.
+fn validate_key(key: &str) -> Result<()> {
+    if key.is_empty() {
+        anyhow::bail!("Config key cannot be empty");
+    }
+    if key.starts_with('.') || key.ends_with('.') {
+        anyhow::bail!("Config key cannot start or end with a dot: {key:?}");
+    }
+    if key.contains("..") {
+        anyhow::bail!("Config key cannot contain empty segments (double dot): {key:?}");
+    }
+    if key.chars().any(|c| c.is_control()) {
+        anyhow::bail!("Config key cannot contain control characters: {key:?}");
+    }
+    // Reject excessively long keys (defense against abuse)
+    if key.len() > 128 {
+        anyhow::bail!("Config key too long (max 128 chars): {key:?}");
+    }
+    Ok(())
 }
 
 impl ConfigManager {
@@ -50,6 +198,10 @@ impl ConfigManager {
     }
 
     pub fn get(&self, key: &str) -> Option<&Value> {
+        // Silently return None for invalid keys (get is infallible)
+        if validate_key(key).is_err() {
+            return None;
+        }
         let parts: Vec<&str> = key.split('.').collect();
         let mut current = &self.data;
         for part in parts {
@@ -63,6 +215,7 @@ impl ConfigManager {
     }
 
     pub fn set(&mut self, key: &str, value: Value) -> Result<()> {
+        validate_key(key)?;
         let parts: Vec<&str> = key.split('.').collect();
         let mut current = &mut self.data;
         for (i, part) in parts.iter().enumerate() {
@@ -78,13 +231,26 @@ impl ConfigManager {
         Ok(())
     }
 
+    /// Atomic save: write to temp file, then rename.
+    /// Prevents corruption if the process crashes mid-write or two instances race.
     pub fn save(&self) -> Result<()> {
         if let Some(parent) = self.path.parent() {
             std::fs::create_dir_all(parent)?;
         }
         let content = serde_json::to_string_pretty(&self.data)?;
-        std::fs::write(&self.path, content)?;
-        Ok(())
+
+        // Write to a sibling temp file first
+        let tmp_path = self.path.with_extension("json.tmp");
+        std::fs::write(&tmp_path, &content)
+            .with_context(|| format!("Failed to write temp config: {}", tmp_path.display()))?;
+
+        // Atomic rename (on the same filesystem, this is atomic on most OSes)
+        std::fs::rename(&tmp_path, &self.path).or_else(|_| {
+            // Fallback for cross-device moves (shouldn't happen for same-dir rename)
+            std::fs::write(&self.path, &content)?;
+            let _ = std::fs::remove_file(&tmp_path);
+            Ok(())
+        })
     }
 
     /// Migrate config from older versions. Adds missing keys without overwriting.
@@ -128,6 +294,14 @@ impl ConfigManager {
 
     pub fn data(&self) -> &Value {
         &self.data
+    }
+
+    /// Deserialize the current config JSON into a typed, validated struct.
+    ///
+    /// Unknown keys are silently ignored (forward-compatible). Missing keys
+    /// receive their `Default` values.
+    pub fn typed(&self) -> TypedConfig {
+        serde_json::from_value(self.data.clone()).unwrap_or_default()
     }
 }
 
@@ -193,5 +367,135 @@ mod tests {
         let path = dir.path().join("config.json");
         let config = ConfigManager::load(&path).unwrap();
         assert!(config.get("nonexistent.key").is_none());
+    }
+
+    #[test]
+    fn test_invalid_key_empty() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("config.json");
+        let mut config = ConfigManager::load(&path).unwrap();
+        assert!(config.set("", Value::String("x".into())).is_err());
+        assert!(config.get("").is_none());
+    }
+
+    #[test]
+    fn test_invalid_key_leading_dot() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("config.json");
+        let mut config = ConfigManager::load(&path).unwrap();
+        assert!(config.set(".leading", Value::String("x".into())).is_err());
+    }
+
+    #[test]
+    fn test_invalid_key_trailing_dot() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("config.json");
+        let mut config = ConfigManager::load(&path).unwrap();
+        assert!(config.set("trailing.", Value::String("x".into())).is_err());
+    }
+
+    #[test]
+    fn test_invalid_key_double_dot() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("config.json");
+        let mut config = ConfigManager::load(&path).unwrap();
+        assert!(config.set("a..b", Value::String("x".into())).is_err());
+    }
+
+    #[test]
+    fn test_invalid_key_control_chars() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("config.json");
+        let mut config = ConfigManager::load(&path).unwrap();
+        assert!(config.set("a\0b", Value::String("x".into())).is_err());
+        assert!(config.set("a\nb", Value::String("x".into())).is_err());
+    }
+
+    // -----------------------------------------------------------------------
+    // TypedConfig tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_typed_defaults_match_json_defaults() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("config.json");
+        let config = ConfigManager::load(&path).unwrap();
+        let typed = config.typed();
+
+        assert_eq!(typed.config_version, 2);
+        assert_eq!(typed.editor, "nvim");
+        assert_eq!(typed.default_kb, "personal");
+        assert_eq!(typed.ai.backend, "ollama");
+        assert_eq!(typed.ai.default_model, "llama3.2");
+        assert_eq!(typed.ai.ollama_url, "http://localhost:11434");
+        assert_eq!(typed.ai.gguf_model_path, "");
+        assert_eq!(typed.ai.embedding_model, "nomic-embed-text");
+        assert_eq!(typed.daemon.port, 7433);
+        assert!(typed.daemon.auto_start);
+        assert_eq!(typed.session.shell, "powershell");
+        assert!(!typed.session.tmux_enabled);
+        assert!(typed.hooks.on_create.is_none());
+        assert!(typed.hooks.on_save.is_none());
+        assert!(typed.hooks.on_daily.is_none());
+    }
+
+    #[test]
+    fn test_typed_reads_custom_values() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("config.json");
+        let mut config = ConfigManager::load(&path).unwrap();
+        config.set("editor", Value::String("code".into())).unwrap();
+        config
+            .set("ai.default_model", Value::String("mistral".into()))
+            .unwrap();
+        config.set("daemon.port", serde_json::json!(9999)).unwrap();
+
+        let typed = config.typed();
+        assert_eq!(typed.editor, "code");
+        assert_eq!(typed.ai.default_model, "mistral");
+        assert_eq!(typed.daemon.port, 9999);
+        // Unchanged fields keep defaults
+        assert_eq!(typed.default_kb, "personal");
+    }
+
+    #[test]
+    fn test_typed_survives_unknown_keys() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("config.json");
+        std::fs::write(
+            &path,
+            r#"{
+                "editor": "emacs",
+                "future_feature": true,
+                "ai": { "default_model": "phi3", "new_ai_key": 42 }
+            }"#,
+        )
+        .unwrap();
+
+        let config = ConfigManager::load(&path).unwrap();
+        let typed = config.typed();
+        assert_eq!(typed.editor, "emacs");
+        assert_eq!(typed.ai.default_model, "phi3");
+        // Unknown keys silently ignored, missing keys get defaults
+        assert_eq!(typed.default_kb, "personal");
+        assert_eq!(typed.daemon.port, 7433);
+    }
+
+    #[test]
+    fn test_typed_from_empty_json_uses_defaults() {
+        let typed: TypedConfig = serde_json::from_str("{}").unwrap();
+        assert_eq!(typed.editor, "nvim");
+        assert_eq!(typed.ai.default_model, "llama3.2");
+        assert_eq!(typed.daemon.port, 7433);
+    }
+
+    #[test]
+    fn test_load_typed_helper() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("config.json");
+        let (mgr, typed) = load_typed(&path).unwrap();
+        assert_eq!(mgr.get_string("editor").unwrap(), "nvim");
+        assert_eq!(typed.editor, "nvim");
+        assert_eq!(typed.ai.backend, "ollama");
     }
 }

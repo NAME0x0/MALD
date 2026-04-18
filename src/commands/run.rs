@@ -1,16 +1,20 @@
 use anyhow::{bail, Result};
 use std::process::Command;
+use tempfile::TempDir;
 
-use crate::fs::mald_home;
 use crate::parser::MarkdownDocument;
 
 /// Execute code blocks from a note. Like Jupyter but in the terminal.
 /// With --save, writes output back into the markdown after each code block.
+///
+/// SAFETY: Requires `allow_exec=true` to actually execute code.
+/// Without it, shows a preview of what would be executed.
 pub async fn run(
     note: &str,
     kb: Option<&str>,
     block_index: Option<usize>,
     save: bool,
+    allow_exec: bool,
 ) -> Result<()> {
     let filepath = resolve_note(note, kb)?;
     let content = std::fs::read_to_string(&filepath)?;
@@ -18,24 +22,6 @@ pub async fn run(
 
     if doc.code_blocks.is_empty() {
         println!("No code blocks found in '{note}'");
-        return Ok(());
-    }
-
-    // Safety confirmation
-    let total = if block_index.is_some() {
-        1
-    } else {
-        doc.code_blocks.len()
-    };
-    println!("About to execute {total} code block(s) from '{note}'");
-    print!("Continue? [Y/n] ");
-    use std::io::Write;
-    std::io::stdout().flush()?;
-    let mut confirm = String::new();
-    std::io::stdin().read_line(&mut confirm)?;
-    let confirm = confirm.trim().to_lowercase();
-    if confirm == "n" || confirm == "no" {
-        println!("Aborted.");
         return Ok(());
     }
 
@@ -52,6 +38,48 @@ pub async fn run(
         } else {
             doc.code_blocks.iter().enumerate().collect()
         };
+
+    // Safety gate: require explicit --allow-exec flag
+    if !allow_exec {
+        println!("⚠️  SAFETY: Code execution requires --allow-exec flag\n");
+        println!(
+            "The following {} code block(s) would be executed:\n",
+            blocks_to_run.len()
+        );
+        for (i, block) in &blocks_to_run {
+            let lang = if block.language.is_empty() {
+                "text"
+            } else {
+                &block.language
+            };
+            println!("--- [{lang}] block {i} ---");
+            // Show first 10 lines as preview
+            let preview_lines: Vec<&str> = block.content.lines().take(10).collect();
+            for line in &preview_lines {
+                println!("  {line}");
+            }
+            if block.content.lines().count() > 10 {
+                println!("  ... ({} more lines)", block.content.lines().count() - 10);
+            }
+            println!();
+        }
+        println!("To execute, run: mald run {note} --allow-exec");
+        return Ok(());
+    }
+
+    // Safety confirmation even with flag
+    let total = blocks_to_run.len();
+    println!("About to execute {total} code block(s) from '{note}'");
+    print!("Continue? [Y/n] ");
+    use std::io::Write;
+    std::io::stdout().flush()?;
+    let mut confirm = String::new();
+    std::io::stdin().read_line(&mut confirm)?;
+    let confirm = confirm.trim().to_lowercase();
+    if confirm == "n" || confirm == "no" {
+        println!("Aborted.");
+        return Ok(());
+    }
 
     let mut outputs: Vec<(usize, String)> = Vec::new();
 
@@ -101,6 +129,30 @@ pub async fn run(
     }
 
     Ok(())
+}
+
+/// Execute a single inline code block (for GUI code cells).
+pub async fn run_inline_block(lang: String, code: String) -> Result<String, String> {
+    let result = tokio::task::spawn_blocking(move || execute_block(&lang, &code))
+        .await
+        .map_err(|e| e.to_string())?;
+
+    match result {
+        Ok(output) => {
+            let mut combined = String::new();
+            if !output.stdout.is_empty() {
+                combined.push_str(&output.stdout);
+            }
+            if !output.stderr.is_empty() {
+                combined.push_str(&output.stderr);
+            }
+            if output.exit_code != 0 {
+                combined.push_str(&format!("(exit code: {})\n", output.exit_code));
+            }
+            Ok(combined)
+        }
+        Err(e) => Err(e.to_string()),
+    }
 }
 
 /// Save execution outputs back into the markdown, inserting output blocks
@@ -241,13 +293,15 @@ fn execute_block(lang: &str, code: &str) -> Result<ExecOutput> {
 }
 
 fn run_rust_block(code: &str) -> Result<ExecOutput> {
-    let tmp_dir = std::env::temp_dir().join("mald-run");
-    std::fs::create_dir_all(&tmp_dir)?;
-    let src_path = tmp_dir.join("block.rs");
+    // Use tempfile for RAII cleanup — temp dir is automatically deleted when dropped
+    let tmp_dir =
+        TempDir::new().map_err(|e| anyhow::anyhow!("Failed to create temp directory: {e}"))?;
+
+    let src_path = tmp_dir.path().join("block.rs");
     let exe_path = if cfg!(windows) {
-        tmp_dir.join("block.exe")
+        tmp_dir.path().join("block.exe")
     } else {
-        tmp_dir.join("block")
+        tmp_dir.path().join("block")
     };
 
     let full_code = if code.contains("fn main") {
@@ -263,6 +317,7 @@ fn run_rust_block(code: &str) -> Result<ExecOutput> {
         .output()?;
 
     if !compile.status.success() {
+        // tmp_dir automatically cleaned up when returning here
         return Ok(ExecOutput {
             stdout: String::new(),
             stderr: String::from_utf8_lossy(&compile.stderr).to_string(),
@@ -272,9 +327,7 @@ fn run_rust_block(code: &str) -> Result<ExecOutput> {
 
     let run = Command::new(&exe_path).output()?;
 
-    let _ = std::fs::remove_file(&src_path);
-    let _ = std::fs::remove_file(&exe_path);
-
+    // tmp_dir automatically cleaned up when dropped at function exit
     Ok(ExecOutput {
         stdout: String::from_utf8_lossy(&run.stdout).to_string(),
         stderr: String::from_utf8_lossy(&run.stderr).to_string(),
@@ -287,13 +340,7 @@ pub fn resolve_note_pub(note: &str, kb: Option<&str>) -> Result<std::path::PathB
 }
 
 fn resolve_note(note: &str, kb: Option<&str>) -> Result<std::path::PathBuf> {
-    let config_path = mald_home().join("config").join("config.json");
-    let config = crate::config::ConfigManager::load(&config_path)?;
-    let kb_name = kb
-        .map(String::from)
-        .or_else(|| config.get_string("default_kb"))
-        .unwrap_or_else(|| "personal".into());
-    let kb_path = mald_home().join("kb").join(&kb_name);
+    let (_config, _typed, kb_name, kb_path) = crate::config::resolve_kb(kb)?;
 
     let exact = kb_path.join(note);
     if exact.exists() {

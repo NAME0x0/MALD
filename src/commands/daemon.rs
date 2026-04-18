@@ -154,3 +154,86 @@ fn process_alive(pid: u32) -> bool {
         unsafe { libc::kill(pid as i32, 0) == 0 }
     }
 }
+
+/// Health metrics returned by daemon status query
+#[derive(Debug, serde::Deserialize)]
+pub struct DaemonHealth {
+    pub healthy: bool,
+    pub uptime_secs: u64,
+    pub version: String,
+    pub index_status: IndexStatus,
+    pub kb_path: String,
+}
+
+#[derive(Debug, serde::Deserialize)]
+pub struct IndexStatus {
+    pub fts_available: bool,
+    pub vector_available: bool,
+    pub document_count: Option<usize>,
+    pub index_failures: u64,
+}
+
+/// Query daemon health via IPC. Returns None if daemon is not responding.
+pub async fn query_health() -> Option<DaemonHealth> {
+    if !is_running() {
+        return None;
+    }
+
+    let token = crate::daemon::server::read_auth_token()?;
+    let request = serde_json::json!({
+        "token": token,
+        "cmd": "status"
+    });
+    let request_str = format!("{}\n", serde_json::to_string(&request).ok()?);
+
+    #[cfg(windows)]
+    {
+        use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+        use tokio::net::TcpStream;
+
+        let port = {
+            let config_path = mald_home().join("config").join("config.json");
+            if let Ok(cfg) = crate::config::ConfigManager::load(&config_path) {
+                cfg.typed().daemon.port
+            } else {
+                7433
+            }
+        };
+
+        let stream = TcpStream::connect(format!("127.0.0.1:{port}")).await.ok()?;
+        let (reader, mut writer) = tokio::io::split(stream);
+        writer.write_all(request_str.as_bytes()).await.ok()?;
+
+        let mut lines = BufReader::new(reader).lines();
+        let line = lines.next_line().await.ok()??;
+        parse_health_response(&line)
+    }
+    #[cfg(not(windows))]
+    {
+        use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+        use tokio::net::UnixStream;
+
+        let sock_path = mald_home().join("daemon.sock");
+        let stream = UnixStream::connect(&sock_path).await.ok()?;
+        let (reader, mut writer) = tokio::io::split(stream);
+        writer.write_all(request_str.as_bytes()).await.ok()?;
+
+        let mut lines = BufReader::new(reader).lines();
+        let line = lines.next_line().await.ok()??;
+        parse_health_response(&line)
+    }
+}
+
+fn parse_health_response(line: &str) -> Option<DaemonHealth> {
+    #[derive(serde::Deserialize)]
+    struct Response {
+        status: String,
+        data: serde_json::Value,
+    }
+
+    let resp: Response = serde_json::from_str(line).ok()?;
+    if resp.status != "ok" {
+        return None;
+    }
+    serde_json::from_value(resp.data).ok()
+}

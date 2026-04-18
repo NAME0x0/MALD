@@ -14,6 +14,10 @@ pub struct Cli {
     #[command(subcommand)]
     pub command: Option<Command>,
 
+    /// Launch the ratatui TUI instead of the GPU app
+    #[arg(long)]
+    pub tui: bool,
+
     /// Free-form text treated as a search query when no subcommand matches
     #[arg(trailing_var_arg = true, allow_hyphen_values = true, hide = true)]
     pub args: Vec<String>,
@@ -196,7 +200,7 @@ pub enum Command {
 
     /// Execute code blocks from a note
     #[command(
-        after_help = "Examples:\n  mald run script-note\n  mald run script-note -n 2     # run only block 2\n  mald run script-note --save   # save output into markdown\n  mald run script-note --list   # list blocks without running"
+        after_help = "Examples:\n  mald run script-note --list         # preview blocks without running\n  mald run script-note --allow-exec   # execute all blocks\n  mald run script-note -n 2 --allow-exec  # execute only block 2\n  mald run script-note --save --allow-exec  # execute and save output\n\nSAFETY: Code execution requires --allow-exec flag. Always review code before running."
     )]
     Run {
         note: String,
@@ -208,6 +212,9 @@ pub enum Command {
         list: bool,
         #[arg(short, long)]
         save: bool,
+        /// Allow code execution (required for safety)
+        #[arg(long)]
+        allow_exec: bool,
     },
 
     /// Render a note in the terminal with colors
@@ -644,11 +651,12 @@ pub async fn run(cli: Cli) -> anyhow::Result<()> {
             block,
             list,
             save,
+            allow_exec,
         }) => {
             if list {
                 crate::commands::run::list_blocks(&note, kb.as_deref()).await
             } else {
-                crate::commands::run::run(&note, kb.as_deref(), block, save).await
+                crate::commands::run::run(&note, kb.as_deref(), block, save, allow_exec).await
             }
         }
         Some(Command::Preview { note, kb }) => {

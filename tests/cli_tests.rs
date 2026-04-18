@@ -1,17 +1,17 @@
+use assert_cmd::cargo::cargo_bin_cmd;
 use assert_cmd::Command;
 use predicates::prelude::*;
 use tempfile::TempDir;
 
 fn mald_cmd_with_home(dir: &std::path::Path) -> Command {
-    let mut cmd = Command::cargo_bin("mald").unwrap();
+    let mut cmd = cargo_bin_cmd!("mald");
     cmd.env("MALD_HOME", dir.join(".mald"));
     cmd
 }
 
 #[test]
 fn test_cli_help() {
-    Command::cargo_bin("mald")
-        .unwrap()
+    cargo_bin_cmd!("mald")
         .arg("--help")
         .assert()
         .success()
@@ -145,11 +145,7 @@ fn test_cli_orphans() {
 
 #[test]
 fn test_cli_unknown_subcommand() {
-    Command::cargo_bin("mald")
-        .unwrap()
-        .arg("nonexistent")
-        .assert()
-        .failure();
+    cargo_bin_cmd!("mald").arg("nonexistent").assert().failure();
 }
 
 #[test]

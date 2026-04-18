@@ -1,23 +1,14 @@
 use anyhow::{bail, Result};
 
-use crate::config::ConfigManager;
-use crate::fs::mald_home;
-
 /// Open the KB directory in the configured editor (or file manager).
 pub async fn run(kb: Option<&str>) -> Result<()> {
-    let config_path = mald_home().join("config").join("config.json");
-    let config = ConfigManager::load(&config_path)?;
-    let kb_name = kb
-        .map(String::from)
-        .or_else(|| config.get_string("default_kb"))
-        .unwrap_or_else(|| "personal".into());
+    let (_config, typed, kb_name, kb_path) = crate::config::resolve_kb(kb)?;
 
-    let kb_path = mald_home().join("kb").join(&kb_name);
     if !kb_path.exists() {
         bail!("Knowledge base '{kb_name}' not found. Create it with: mald kb create {kb_name}");
     }
 
-    let editor = config.get_string("editor").unwrap_or_else(|| "nvim".into());
+    let editor = typed.editor.clone();
 
     // Some editors (VS Code, Sublime) can open directories
     // For terminal editors, open the index.md or first file

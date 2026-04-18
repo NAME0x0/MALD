@@ -2,6 +2,7 @@ use anyhow::Result;
 use rand::Rng;
 use std::collections::{BinaryHeap, HashMap, HashSet};
 use std::path::Path;
+use wide::f32x8;
 
 const M: usize = 16; // max connections per layer
 const M_MAX0: usize = 32; // max connections at layer 0
@@ -25,9 +26,13 @@ pub struct HnswIndex {
     pub(crate) entry_point: Option<u32>,
     pub(crate) max_layer: usize,
     pub(crate) dim: usize,
+    /// Cached count of deleted nodes for O(1) len() computation.
+    pub(crate) deleted_count: usize,
 }
 
-#[derive(PartialEq)]
+/// Candidate for min-heap (closest first when popped).
+/// Used for the exploration frontier.
+#[derive(PartialEq, Clone, Copy)]
 struct Candidate {
     id: u32,
     dist: f32,
@@ -43,7 +48,7 @@ impl PartialOrd for Candidate {
 
 impl Ord for Candidate {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        // Min-heap: reverse ordering
+        // Min-heap: reverse ordering (smallest dist = highest priority)
         other
             .dist
             .partial_cmp(&self.dist)
@@ -51,15 +56,74 @@ impl Ord for Candidate {
     }
 }
 
-fn cosine_distance(a: &[f32], b: &[f32]) -> f32 {
-    let mut dot = 0.0f32;
-    let mut norm_a = 0.0f32;
-    let mut norm_b = 0.0f32;
-    for i in 0..a.len() {
-        dot += a[i] * b[i];
-        norm_a += a[i] * a[i];
-        norm_b += b[i] * b[i];
+/// Candidate for max-heap (farthest first when popped).
+/// Used for the results set to efficiently evict worst candidates.
+#[derive(PartialEq, Clone, Copy)]
+struct MaxCandidate {
+    id: u32,
+    dist: f32,
+}
+
+impl Eq for MaxCandidate {}
+
+impl PartialOrd for MaxCandidate {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
     }
+}
+
+impl Ord for MaxCandidate {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        // Max-heap: normal ordering (largest dist = highest priority)
+        self.dist
+            .partial_cmp(&other.dist)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    }
+}
+
+/// SIMD-accelerated cosine distance using 8-wide f32 vectors.
+/// Falls back to scalar for non-aligned remainders.
+/// Returns 1.0 - cosine_similarity (0.0 = identical, 2.0 = opposite).
+#[inline]
+fn cosine_distance(a: &[f32], b: &[f32]) -> f32 {
+    debug_assert_eq!(a.len(), b.len(), "vector dimension mismatch");
+
+    let chunks = a.len() / 8;
+    let remainder = a.len() % 8;
+
+    let mut dot_acc = f32x8::ZERO;
+    let mut norm_a_acc = f32x8::ZERO;
+    let mut norm_b_acc = f32x8::ZERO;
+
+    // Process 8 elements at a time with SIMD
+    for i in 0..chunks {
+        let offset = i * 8;
+        let va = f32x8::new(a[offset..offset + 8].try_into().unwrap());
+        let vb = f32x8::new(b[offset..offset + 8].try_into().unwrap());
+
+        dot_acc += va * vb;
+        norm_a_acc += va * va;
+        norm_b_acc += vb * vb;
+    }
+
+    // Horizontal sum of SIMD accumulators
+    let arr_dot: [f32; 8] = dot_acc.into();
+    let arr_a: [f32; 8] = norm_a_acc.into();
+    let arr_b: [f32; 8] = norm_b_acc.into();
+
+    let mut dot: f32 = arr_dot.iter().sum();
+    let mut norm_a: f32 = arr_a.iter().sum();
+    let mut norm_b: f32 = arr_b.iter().sum();
+
+    // Handle remainder with scalar ops
+    let tail_start = chunks * 8;
+    for i in 0..remainder {
+        let idx = tail_start + i;
+        dot += a[idx] * b[idx];
+        norm_a += a[idx] * a[idx];
+        norm_b += b[idx] * b[idx];
+    }
+
     let denom = norm_a.sqrt() * norm_b.sqrt();
     if denom == 0.0 {
         1.0
@@ -80,11 +144,13 @@ impl HnswIndex {
             entry_point: None,
             max_layer: 0,
             dim,
+            deleted_count: 0,
         }
     }
 
+    /// Returns the count of non-deleted nodes. O(1) via cached counter.
     pub fn len(&self) -> usize {
-        self.nodes.values().filter(|n| !n.deleted).count()
+        self.nodes.len() - self.deleted_count
     }
 
     pub fn is_empty(&self) -> bool {
@@ -134,20 +200,21 @@ impl HnswIndex {
                     if l < neighbor.neighbors.len() {
                         neighbor.neighbors[l].push(id);
                         if neighbor.neighbors[l].len() > m {
-                            // Clone what we need to avoid borrow conflict
-                            let nv = neighbor.vector.clone();
+                            // Prune neighbors: collect IDs and compute distances without cloning vectors
                             let neighbor_ids: Vec<u32> = neighbor.neighbors[l].clone();
-                            let mut scored: Vec<(u32, f32)> = neighbor_ids
-                                .iter()
-                                .map(|&nid| {
-                                    let d = self
-                                        .nodes
-                                        .get(&nid)
-                                        .map(|n2| cosine_distance(&nv, &n2.vector))
-                                        .unwrap_or(f32::MAX);
-                                    (nid, d)
-                                })
-                                .collect();
+                            let mut scored: Vec<(u32, f32)> =
+                                Vec::with_capacity(neighbor_ids.len());
+
+                            // Get reference to neighbor's vector for distance computation
+                            let nv = &self.nodes[&neighbor_id].vector;
+                            for &nid in &neighbor_ids {
+                                let d = self
+                                    .nodes
+                                    .get(&nid)
+                                    .map(|n2| cosine_distance(nv, &n2.vector))
+                                    .unwrap_or(f32::MAX);
+                                scored.push((nid, d));
+                            }
                             scored.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
                             scored.truncate(m);
                             // Re-borrow mutably to assign
@@ -199,7 +266,10 @@ impl HnswIndex {
 
     pub fn delete(&mut self, id: u32) {
         if let Some(node) = self.nodes.get_mut(&id) {
-            node.deleted = true;
+            if !node.deleted {
+                node.deleted = true;
+                self.deleted_count += 1;
+            }
         }
     }
 
@@ -213,14 +283,16 @@ impl HnswIndex {
 
         loop {
             let mut changed = false;
-            let neighbors = self
+            // Avoid clone: collect neighbor IDs first, then iterate
+            let neighbor_ids: Vec<u32> = self
                 .nodes
                 .get(&current)
                 .and_then(|n| n.neighbors.get(layer))
-                .cloned()
-                .unwrap_or_default();
+                .map(|v| v.as_slice())
+                .unwrap_or(&[])
+                .to_vec();
 
-            for &nid in &neighbors {
+            for nid in neighbor_ids {
                 if let Some(neighbor) = self.nodes.get(&nid) {
                     let d = cosine_distance(query, &neighbor.vector);
                     if d < best_dist {
@@ -237,6 +309,8 @@ impl HnswIndex {
         current
     }
 
+    /// Search a single layer using beam search with ef candidates.
+    /// Optimized: uses max-heap for results to avoid O(n log n) sort per insertion.
     fn search_layer(&self, start: u32, query: &[f32], ef: usize, layer: usize) -> Vec<Candidate> {
         let start_dist = self
             .nodes
@@ -247,37 +321,41 @@ impl HnswIndex {
         let mut visited = HashSet::new();
         visited.insert(start);
 
+        // Min-heap for exploration frontier (closest candidates to explore next)
         let mut candidates = BinaryHeap::new();
         candidates.push(Candidate {
             id: start,
             dist: start_dist,
         });
 
-        let mut results: Vec<Candidate> = vec![Candidate {
+        // Max-heap for results (farthest at top for efficient eviction)
+        let mut results: BinaryHeap<MaxCandidate> = BinaryHeap::new();
+        results.push(MaxCandidate {
             id: start,
             dist: start_dist,
-        }];
+        });
 
         while let Some(closest) = candidates.pop() {
             // If closest candidate is farther than the worst result, stop
+            // O(1) peek instead of O(n) fold
             if results.len() >= ef {
-                let worst = results
-                    .iter()
-                    .map(|c| c.dist)
-                    .fold(f32::NEG_INFINITY, f32::max);
-                if closest.dist > worst {
-                    break;
+                if let Some(worst) = results.peek() {
+                    if closest.dist > worst.dist {
+                        break;
+                    }
                 }
             }
 
-            let neighbors = self
+            // Collect neighbor IDs to avoid borrow conflict
+            let neighbor_ids: Vec<u32> = self
                 .nodes
                 .get(&closest.id)
                 .and_then(|n| n.neighbors.get(layer))
-                .cloned()
-                .unwrap_or_default();
+                .map(|v| v.as_slice())
+                .unwrap_or(&[])
+                .to_vec();
 
-            for &nid in &neighbors {
+            for nid in neighbor_ids {
                 if visited.contains(&nid) {
                     continue;
                 }
@@ -285,25 +363,34 @@ impl HnswIndex {
 
                 if let Some(neighbor) = self.nodes.get(&nid) {
                     let d = cosine_distance(query, &neighbor.vector);
-                    let worst_result = results
-                        .iter()
-                        .map(|c| c.dist)
-                        .fold(f32::NEG_INFINITY, f32::max);
 
-                    if results.len() < ef || d < worst_result {
+                    // O(1) peek to get worst distance
+                    let dominated =
+                        results.len() >= ef && results.peek().map(|w| d >= w.dist).unwrap_or(false);
+
+                    if !dominated {
                         candidates.push(Candidate { id: nid, dist: d });
-                        results.push(Candidate { id: nid, dist: d });
-                        results.sort_by(|a, b| a.dist.partial_cmp(&b.dist).unwrap());
+                        results.push(MaxCandidate { id: nid, dist: d });
+
+                        // Evict worst if over capacity — O(log ef)
                         if results.len() > ef {
-                            results.truncate(ef);
+                            results.pop();
                         }
                     }
                 }
             }
         }
 
-        results.sort_by(|a, b| a.dist.partial_cmp(&b.dist).unwrap());
-        results
+        // Convert max-heap to sorted vec (ascending by distance)
+        let mut sorted: Vec<Candidate> = results
+            .into_iter()
+            .map(|mc| Candidate {
+                id: mc.id,
+                dist: mc.dist,
+            })
+            .collect();
+        sorted.sort_by(|a, b| a.dist.partial_cmp(&b.dist).unwrap());
+        sorted
     }
 
     pub fn save(&self, path: &Path) -> Result<()> {

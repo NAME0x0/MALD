@@ -1,18 +1,18 @@
 use anyhow::{bail, Result};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-use crate::config::ConfigManager;
-use crate::fs::mald_home;
+/// Escape user-supplied strings for safe insertion into HTML.
+fn html_escape(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&#x27;")
+}
 
 /// Start a local HTTP server that renders the KB as HTML and provides a capture API.
 pub async fn run(kb: Option<&str>, port: u16) -> Result<()> {
-    let config_path = mald_home().join("config").join("config.json");
-    let config = ConfigManager::load(&config_path)?;
-    let kb_name = kb
-        .map(String::from)
-        .or_else(|| config.get_string("default_kb"))
-        .unwrap_or_else(|| "personal".into());
-    let kb_path = mald_home().join("kb").join(&kb_name);
+    let (_config, _typed, kb_name, kb_path) = crate::config::resolve_kb(kb)?;
 
     if !kb_path.exists() {
         bail!("Knowledge base '{kb_name}' not found");
@@ -29,7 +29,7 @@ pub async fn run(kb: Option<&str>, port: u16) -> Result<()> {
         let kb = kb_path.clone();
         let name = kb_name.clone();
         tokio::spawn(async move {
-            if let Err(e) = handle_connection(stream, &kb, &name).await {
+            if let Err(e) = handle_connection(stream, &kb, &name, port).await {
                 tracing::debug!("Request error: {}", e);
             }
         });
@@ -40,6 +40,7 @@ async fn handle_connection(
     mut stream: tokio::net::TcpStream,
     kb_path: &std::path::Path,
     kb_name: &str,
+    port: u16,
 ) -> Result<()> {
     let mut buf = vec![0u8; 8192];
     let n = stream.read(&mut buf).await?;
@@ -54,6 +55,12 @@ async fn handle_connection(
 
     let (status, body, content_type) = if method == "POST" && path == "/api/capture" {
         handle_capture(&request, kb_path)
+    } else if method == "GET" && path == "/favicon.svg" {
+        (
+            "200 OK",
+            crate::web_assets::FAVICON_SVG.to_string(),
+            "image/svg+xml; charset=utf-8",
+        )
     } else if method == "GET" && (path == "/" || path == "/index") {
         match render_index(kb_path, kb_name) {
             Ok(html) => ("200 OK", html, "text/html; charset=utf-8"),
@@ -70,7 +77,8 @@ async fn handle_connection(
             None => (
                 "404 Not Found",
                 format!(
-                    "<html><body><h1>404</h1><p>Note '{note_name}' not found.</p><p><a href=\"/\">Back</a></p></body></html>"
+                    "<html><body><h1>404</h1><p>Note '{}' not found.</p><p><a href=\"/\">Back</a></p></body></html>",
+                    html_escape(note_name)
                 ),
                 "text/html; charset=utf-8",
             ),
@@ -84,10 +92,11 @@ async fn handle_connection(
     };
 
     let response = format!(
-        "HTTP/1.1 {}\r\nContent-Type: {}\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n{}",
+        "HTTP/1.1 {}\r\nContent-Type: {}\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: http://127.0.0.1:{}\r\nContent-Security-Policy: default-src 'self'; style-src 'unsafe-inline'\r\nConnection: close\r\n\r\n{}",
         status,
         content_type,
         body.len(),
+        port,
         body
     );
     stream.write_all(response.as_bytes()).await?;
@@ -193,14 +202,20 @@ fn render_index(kb_path: &std::path::Path, kb_name: &str) -> Result<String> {
 
     let mut list = String::new();
     for (stem, title) in &entries {
-        list.push_str(&format!("<li><a href=\"/{stem}\">{title}</a></li>\n"));
+        list.push_str(&format!(
+            "<li><a href=\"/{}\">{}</a></li>\n",
+            html_escape(stem),
+            html_escape(title)
+        ));
     }
 
+    let escaped_kb = html_escape(kb_name);
     Ok(format!(
         r#"<!DOCTYPE html>
-<html><head><meta charset="utf-8"><title>{kb_name}</title>
+<html><head><meta charset="utf-8"><title>{escaped_kb}</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <style>{CSS}</style></head>
-<body><h1>{kb_name}</h1><p>{} notes</p><ul>{list}</ul>
+<body><h1>{escaped_kb}</h1><p>{} notes</p><ul>{list}</ul>
 <footer>Served by MALD</footer></body></html>"#,
         entries.len()
     ))
@@ -225,7 +240,11 @@ fn render_note(kb_path: &std::path::Path, name: &str) -> Option<String> {
         .replace_all(&body, |caps: &regex::Captures| {
             let target = &caps[1];
             let slug = target.to_lowercase().replace(' ', "-");
-            format!("<a href=\"/{slug}\">{target}</a>")
+            format!(
+                "<a href=\"/{}\">{}</a>",
+                html_escape(&slug),
+                html_escape(target)
+            )
         })
         .to_string();
 
@@ -233,9 +252,11 @@ fn render_note(kb_path: &std::path::Path, name: &str) -> Option<String> {
     let mut html_body = String::new();
     pulldown_cmark::html::push_html(&mut html_body, parser);
 
+    let escaped_title = html_escape(&title);
     Some(format!(
         r#"<!DOCTYPE html>
-<html><head><meta charset="utf-8"><title>{title}</title>
+<html><head><meta charset="utf-8"><title>{escaped_title}</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <style>{CSS}</style></head>
 <body><nav><a href="/">← Back</a></nav>{html_body}
 <footer>Served by MALD</footer></body></html>"#
@@ -243,15 +264,7 @@ fn render_note(kb_path: &std::path::Path, name: &str) -> Option<String> {
 }
 
 fn strip_frontmatter(content: &str) -> String {
-    let trimmed = content.trim_start();
-    if !trimmed.starts_with("---") {
-        return content.to_string();
-    }
-    if let Some(end) = trimmed[3..].find("\n---") {
-        trimmed[3 + end + 4..].trim_start_matches('\n').to_string()
-    } else {
-        content.to_string()
-    }
+    crate::parser::frontmatter::strip(content)
 }
 
 fn extract_title_from_file(path: &std::path::Path) -> Option<String> {

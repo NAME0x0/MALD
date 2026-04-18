@@ -16,7 +16,18 @@ pub struct CitedSource {
     pub end_line: u32,
 }
 
+pub struct PreparedRagChat {
+    pub model: String,
+    pub messages: Vec<ChatMessage>,
+    pub sources: Vec<CitedSource>,
+}
+
 /// Retrieve relevant sources for a query, returning chunks with citation info.
+///
+/// Search modes (logged for observability):
+/// - **Full mode**: Vector search via HNSW index with semantic similarity
+/// - **Degraded (FTS-only)**: Vector index unavailable, using keyword search
+/// - **Fallback**: Vector search empty, fell back to FTS
 pub async fn retrieve_sources(
     client: &OllamaClient,
     config: &ConfigManager,
@@ -28,27 +39,58 @@ pub async fn retrieve_sources(
     let meta_path = index_dir.join("metadata.db");
 
     let mut sources = Vec::new();
+    let mut used_vector_search = false;
 
     // Try vector search first
     if hnsw_path.exists() && meta_path.exists() {
-        let embedding_model = config
-            .get_string("ai.embedding_model")
-            .unwrap_or_else(|| "nomic-embed-text".into());
+        let embedding_model = config.typed().ai.embedding_model.clone();
 
         let meta = MetadataStore::open(&meta_path)?;
-        let index = HnswIndex::load(&hnsw_path)?;
-        let query_vec = client.embeddings(&embedding_model, query).await?;
-        let results = index.search(&query_vec, k);
+        match HnswIndex::load(&hnsw_path) {
+            Ok(index) => match client.embeddings(&embedding_model, query).await {
+                Ok(query_vec) => {
+                    let results = index.search(&query_vec, k);
+                    used_vector_search = true;
 
-        for (id, _score) in &results {
-            if let Some(chunk) = meta.get_chunk(*id)? {
-                sources.push(CitedSource {
-                    path: chunk.doc_path,
-                    content: chunk.content,
-                    start_line: chunk.start_line,
-                    end_line: chunk.end_line,
-                });
+                    for (id, _score) in &results {
+                        if let Some(chunk) = meta.get_chunk(*id)? {
+                            sources.push(CitedSource {
+                                path: chunk.doc_path,
+                                content: chunk.content,
+                                start_line: chunk.start_line,
+                                end_line: chunk.end_line,
+                            });
+                        }
+                    }
+
+                    if sources.is_empty() {
+                        tracing::debug!(
+                            query = query,
+                            "vector search returned no results, will try FTS fallback"
+                        );
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        error = %e,
+                        model = embedding_model,
+                        "embedding generation failed, falling back to FTS"
+                    );
+                }
+            },
+            Err(e) => {
+                tracing::warn!(
+                    error = %e,
+                    "HNSW index load failed, using FTS-only mode"
+                );
             }
+        }
+    } else {
+        // Log degraded mode on first query (per-session would be ideal but this is simple)
+        if !hnsw_path.exists() {
+            tracing::info!(
+                "running in degraded mode: vector index not found, using FTS-only search"
+            );
         }
     }
 
@@ -58,6 +100,14 @@ pub async fn retrieve_sources(
         if meta_path.exists() {
             let meta = MetadataStore::open(&meta_path)?;
             let fts_results = meta.fts_search(query, k)?;
+
+            if used_vector_search && !fts_results.is_empty() {
+                tracing::debug!(
+                    count = fts_results.len(),
+                    "FTS fallback returned results after vector search miss"
+                );
+            }
+
             for r in fts_results {
                 sources.push(CitedSource {
                     path: r.path,
@@ -66,6 +116,8 @@ pub async fn retrieve_sources(
                     end_line: 0,
                 });
             }
+        } else {
+            tracing::warn!("no search index available (neither vector nor FTS)");
         }
     }
 
@@ -87,6 +139,57 @@ fn build_cited_context(sources: &[CitedSource]) -> String {
         ctx.push_str(&format!("[{}] {}\n{}\n\n", i + 1, loc, src.content));
     }
     ctx
+}
+
+/// Prepare a RAG chat request with resolved context and history.
+pub async fn prepare_rag_chat(
+    client: &OllamaClient,
+    config: &ConfigManager,
+    query: &str,
+    kb_name: &str,
+    session: Option<&ChatSession>,
+) -> Result<PreparedRagChat> {
+    let typed = config.typed();
+    let model = typed.ai.default_model.clone();
+
+    let sources = retrieve_sources(client, config, query, 5).await?;
+    let context = build_cited_context(&sources);
+
+    let system_prompt = if context.is_empty() {
+        format!(
+            "You are a helpful assistant for the knowledge base '{kb_name}'. \
+             Answer questions directly and concisely."
+        )
+    } else {
+        format!(
+            "You are a helpful assistant for the knowledge base '{kb_name}'. \
+             Answer using ONLY the following sources. Cite sources using [1], [2], etc. \
+             If the sources don't contain the answer, say so.\n\n{context}"
+        )
+    };
+
+    let mut messages = vec![ChatMessage {
+        role: "system".into(),
+        content: system_prompt,
+    }];
+
+    if let Some(sess) = session {
+        let history_start = sess.messages.len().saturating_sub(10);
+        for msg in &sess.messages[history_start..] {
+            messages.push(msg.clone());
+        }
+    }
+
+    messages.push(ChatMessage {
+        role: "user".into(),
+        content: query.to_string(),
+    });
+
+    Ok(PreparedRagChat {
+        model,
+        messages,
+        sources,
+    })
 }
 
 /// Format citation references for display.
@@ -114,48 +217,12 @@ pub async fn chat_with_rag(
     kb_name: &str,
     session: Option<&mut ChatSession>,
 ) -> Result<(String, Vec<CitedSource>)> {
-    let model = config
-        .get_string("ai.default_model")
-        .unwrap_or_else(|| "llama3.2".into());
+    let prepared = prepare_rag_chat(client, config, query, kb_name, session.as_deref()).await?;
+    let response = client
+        .chat_with_history(&prepared.model, &prepared.messages)
+        .await?;
 
-    let sources = retrieve_sources(client, config, query, 5).await?;
-    let context = build_cited_context(&sources);
-
-    let system_prompt = if context.is_empty() {
-        format!(
-            "You are a helpful assistant for the knowledge base '{kb_name}'. \
-             Answer questions directly and concisely."
-        )
-    } else {
-        format!(
-            "You are a helpful assistant for the knowledge base '{kb_name}'. \
-             Answer using ONLY the following sources. Cite sources using [1], [2], etc. \
-             If the sources don't contain the answer, say so.\n\n{context}"
-        )
-    };
-
-    let mut messages = vec![ChatMessage {
-        role: "system".into(),
-        content: system_prompt,
-    }];
-
-    // Include conversation history if available
-    if let Some(sess) = &session {
-        // Include last 10 messages for context window management
-        let history_start = sess.messages.len().saturating_sub(10);
-        for msg in &sess.messages[history_start..] {
-            messages.push(msg.clone());
-        }
-    }
-
-    messages.push(ChatMessage {
-        role: "user".into(),
-        content: query.to_string(),
-    });
-
-    let response = client.chat_with_history(&model, &messages).await?;
-
-    Ok((response, sources))
+    Ok((response, prepared.sources))
 }
 
 /// Summarize one or more notes.
@@ -164,9 +231,7 @@ pub async fn summarize(
     config: &ConfigManager,
     note_contents: &[(String, String)], // (title, content) pairs
 ) -> Result<String> {
-    let model = config
-        .get_string("ai.default_model")
-        .unwrap_or_else(|| "llama3.2".into());
+    let model = config.typed().ai.default_model.clone();
 
     let mut context = String::new();
     for (i, (title, content)) in note_contents.iter().enumerate() {
@@ -201,9 +266,7 @@ pub async fn quiz(
     note_contents: &[(String, String)],
     count: usize,
 ) -> Result<String> {
-    let model = config
-        .get_string("ai.default_model")
-        .unwrap_or_else(|| "llama3.2".into());
+    let model = config.typed().ai.default_model.clone();
 
     let mut context = String::new();
     for (title, content) in note_contents {
@@ -238,9 +301,7 @@ pub async fn briefing(
     config: &ConfigManager,
     note_contents: &[(String, String)],
 ) -> Result<String> {
-    let model = config
-        .get_string("ai.default_model")
-        .unwrap_or_else(|| "llama3.2".into());
+    let model = config.typed().ai.default_model.clone();
 
     let mut context = String::new();
     for (title, content) in note_contents {
@@ -273,9 +334,7 @@ pub async fn compare(
     config: &ConfigManager,
     note_contents: &[(String, String)],
 ) -> Result<String> {
-    let model = config
-        .get_string("ai.default_model")
-        .unwrap_or_else(|| "llama3.2".into());
+    let model = config.typed().ai.default_model.clone();
 
     let mut context = String::new();
     for (i, (title, content)) in note_contents.iter().enumerate() {
@@ -313,9 +372,7 @@ pub async fn timeline(
     config: &ConfigManager,
     note_contents: &[(String, String)],
 ) -> Result<String> {
-    let model = config
-        .get_string("ai.default_model")
-        .unwrap_or_else(|| "llama3.2".into());
+    let model = config.typed().ai.default_model.clone();
 
     let mut context = String::new();
     for (title, content) in note_contents {
@@ -347,9 +404,7 @@ pub async fn explain(
     title: &str,
     content: &str,
 ) -> Result<String> {
-    let model = config
-        .get_string("ai.default_model")
-        .unwrap_or_else(|| "llama3.2".into());
+    let model = config.typed().ai.default_model.clone();
 
     let messages = vec![
         ChatMessage {

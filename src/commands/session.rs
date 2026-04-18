@@ -4,25 +4,15 @@ use crate::config::ConfigManager;
 use crate::fs::mald_home;
 
 pub async fn start(kb: Option<&str>) -> Result<()> {
-    let config_path = mald_home().join("config").join("config.json");
-    let config = ConfigManager::load(&config_path)?;
+    let (config, typed, kb_name, kb_path) = crate::config::resolve_kb(kb)?;
 
-    let kb_name = kb
-        .map(String::from)
-        .or_else(|| config.get_string("default_kb"))
-        .unwrap_or_else(|| "personal".into());
-
-    let kb_path = mald_home().join("kb").join(&kb_name);
     if !kb_path.exists() {
         anyhow::bail!(
             "Knowledge base '{kb_name}' not found. Create it with `mald kb create {kb_name}`"
         );
     }
 
-    let tmux_enabled = config
-        .get("session.tmux_enabled")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
+    let tmux_enabled = typed.session.tmux_enabled;
 
     if tmux_enabled && which_exists("tmux") {
         start_tmux_session(&kb_name, &kb_path, &config).await
@@ -66,7 +56,7 @@ async fn start_tmux_session(
     config: &ConfigManager,
 ) -> Result<()> {
     let session_name = format!("mald-{kb_name}");
-    let editor = config.get_string("editor").unwrap_or_else(|| "nvim".into());
+    let editor = config.typed().editor.clone();
     let home = mald_home();
 
     let status = std::process::Command::new("tmux")

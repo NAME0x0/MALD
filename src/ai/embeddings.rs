@@ -8,11 +8,7 @@ pub enum EmbeddingBackend {
 
 impl EmbeddingBackend {
     pub fn from_config(config: &ConfigManager) -> Self {
-        let backend = config
-            .get_string("ai.backend")
-            .unwrap_or_else(|| "ollama".into());
-
-        let _ = backend; // reserved for future backends
+        let _backend = config.typed().ai.backend.clone(); // reserved for future backends
         Self::Ollama(super::ollama::OllamaClient::from_config(config))
     }
 

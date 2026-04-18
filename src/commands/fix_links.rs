@@ -7,14 +7,7 @@ use crate::parser::links::extract_wikilinks;
 
 /// Scan notes for broken wikilinks and offer to fix them using fuzzy matching.
 pub async fn run(kb: Option<&str>, auto_fix: bool) -> Result<()> {
-    let config_path = mald_home().join("config").join("config.json");
-    let config = crate::config::ConfigManager::load(&config_path)?;
-    let kb_name = kb
-        .map(String::from)
-        .or_else(|| config.get_string("default_kb"))
-        .unwrap_or_else(|| "personal".into());
-
-    let kb_path = mald_home().join("kb").join(&kb_name);
+    let (_config, _typed, kb_name, kb_path) = crate::config::resolve_kb(kb)?;
     if !kb_path.exists() {
         return Err(crate::errors::bail_ctx(
             format!("Knowledge base '{kb_name}' not found"),

@@ -1,17 +1,10 @@
 use anyhow::{bail, Result};
 
-use crate::config::ConfigManager;
-use crate::fs::mald_home;
+use crate::fs::{mald_home, slugify};
 
 /// Rename a note and update all wikilink references across the KB.
 pub async fn run(old_name: &str, new_name: &str, kb: Option<&str>) -> Result<()> {
-    let config_path = mald_home().join("config").join("config.json");
-    let config = ConfigManager::load(&config_path)?;
-    let kb_name = kb
-        .map(String::from)
-        .or_else(|| config.get_string("default_kb"))
-        .unwrap_or_else(|| "personal".into());
-    let kb_path = mald_home().join("kb").join(&kb_name);
+    let (_config, _typed, kb_name, kb_path) = crate::config::resolve_kb(kb)?;
 
     if !kb_path.exists() {
         bail!("Knowledge base '{kb_name}' not found");
@@ -158,17 +151,6 @@ fn update_title_in_frontmatter(content: &str, new_title: &str) -> String {
     } else {
         content.to_string()
     }
-}
-
-fn slugify(s: &str) -> String {
-    s.to_lowercase()
-        .chars()
-        .map(|c| if c.is_alphanumeric() { c } else { '-' })
-        .collect::<String>()
-        .split('-')
-        .filter(|s| !s.is_empty())
-        .collect::<Vec<&str>>()
-        .join("-")
 }
 
 #[cfg(test)]

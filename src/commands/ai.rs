@@ -139,14 +139,7 @@ fn load_notes(notes: &[String], kb: Option<&str>) -> Result<Vec<(String, String)
 
 /// Load all notes from a KB (for digest/briefing).
 fn load_all_notes(kb: Option<&str>) -> Result<Vec<(String, String)>> {
-    let config_path = mald_home().join("config").join("config.json");
-    let config = ConfigManager::load(&config_path)?;
-    let kb_name = kb
-        .map(String::from)
-        .or_else(|| config.get_string("default_kb"))
-        .unwrap_or_else(|| "personal".into());
-
-    let kb_path = mald_home().join("kb").join(&kb_name);
+    let (_config, _typed, kb_name, kb_path) = crate::config::resolve_kb(kb)?;
     if !kb_path.exists() {
         return Err(crate::errors::bail_ctx(
             format!("Knowledge base '{kb_name}' not found"),
@@ -169,14 +162,7 @@ fn load_all_notes(kb: Option<&str>) -> Result<Vec<(String, String)>> {
 
 /// Load recently modified notes (last N days).
 fn load_recent_notes(kb: Option<&str>, days: u64) -> Result<Vec<(String, String)>> {
-    let config_path = mald_home().join("config").join("config.json");
-    let config = ConfigManager::load(&config_path)?;
-    let kb_name = kb
-        .map(String::from)
-        .or_else(|| config.get_string("default_kb"))
-        .unwrap_or_else(|| "personal".into());
-
-    let kb_path = mald_home().join("kb").join(&kb_name);
+    let (_config, _typed, kb_name, kb_path) = crate::config::resolve_kb(kb)?;
     if !kb_path.exists() {
         return Err(crate::errors::bail_ctx(
             format!("Knowledge base '{kb_name}' not found"),
@@ -274,9 +260,7 @@ async fn do_chat_turn(
     kb_name: &str,
     session: &mut ChatSession,
 ) -> Result<()> {
-    let model = config
-        .get_string("ai.default_model")
-        .unwrap_or_else(|| DEFAULT_CHAT_MODEL.into());
+    let model = config.typed().ai.default_model.clone();
 
     // Retrieve sources
     let sources = chat::retrieve_sources(client, config, message, 5).await?;

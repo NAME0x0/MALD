@@ -16,15 +16,7 @@ pub async fn run(note: &str, kb: Option<&str>) -> Result<()> {
 }
 
 fn strip_frontmatter(content: &str) -> String {
-    let trimmed = content.trim_start();
-    if !trimmed.starts_with("---") {
-        return content.to_string();
-    }
-    if let Some(end) = trimmed[3..].find("\n---") {
-        trimmed[3 + end + 4..].trim_start_matches('\n').to_string()
-    } else {
-        content.to_string()
-    }
+    crate::parser::frontmatter::strip(content)
 }
 
 /// Resolve `![[note]]` transclusions by inlining the referenced note's body.

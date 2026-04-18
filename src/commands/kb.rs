@@ -41,9 +41,7 @@ pub async fn list(json: bool) -> Result<()> {
 
     let config_path = mald_home().join("config").join("config.json");
     let config = ConfigManager::load(&config_path)?;
-    let default_kb = config
-        .get_string("default_kb")
-        .unwrap_or_else(|| "personal".into());
+    let default_kb = config.typed().default_kb.clone();
 
     let mut kbs: Vec<serde_json::Value> = Vec::new();
     let mut count = 0;
@@ -88,7 +86,7 @@ pub async fn open(name: &str) -> Result<()> {
 
     let config_path = mald_home().join("config").join("config.json");
     let config = ConfigManager::load(&config_path)?;
-    let editor = config.get_string("editor").unwrap_or_else(|| "nvim".into());
+    let editor = config.typed().editor.clone();
 
     let status = std::process::Command::new(&editor)
         .arg(kb_path.to_str().unwrap())
