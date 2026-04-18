@@ -72,7 +72,7 @@ pub fn fuzzy_filter<'a>(query: &str, items: &'a [String]) -> Vec<(usize, &'a str
         })
         .collect();
 
-    scored.sort_by(|a, b| b.2.cmp(&a.2));
+    scored.sort_by_key(|entry| std::cmp::Reverse(entry.2));
     scored
 }
 

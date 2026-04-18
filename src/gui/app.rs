@@ -1777,7 +1777,7 @@ impl MaldApp {
     // View Composition
     // ══════════════════════════════════════════════════════════════════════════
 
-    pub fn view(&self) -> Element<Message> {
+    pub fn view(&self) -> Element<'_, Message> {
         // Build the main layout row
         let mut main_row = Row::new().spacing(0);
 
@@ -1921,7 +1921,7 @@ impl MaldApp {
         iced::widget::stack![base, toast_layer].into()
     }
 
-    fn view_sidebar(&self) -> Element<Message> {
+    fn view_sidebar(&self) -> Element<'_, Message> {
         let theme = self.mald_theme.iced_theme();
         let modified_paths: std::collections::HashSet<std::path::PathBuf> = self
             .open_tabs
@@ -1944,7 +1944,7 @@ impl MaldApp {
         })
     }
 
-    fn view_main_content(&self) -> Element<Message> {
+    fn view_main_content(&self) -> Element<'_, Message> {
         // Top search bar
         let search_bar = top_search::view(
             &self.top_search_query,
@@ -1998,7 +1998,7 @@ impl MaldApp {
         }
     }
 
-    fn view_home(&self) -> Element<Message> {
+    fn view_home(&self) -> Element<'_, Message> {
         let iced_theme = self.mald_theme.iced_theme();
         let text_color = theme::themed(&iced_theme, colors::TEXT, colors::latte::TEXT);
         let sub0 = theme::themed(&iced_theme, colors::SUBTEXT0, colors::latte::SUBTEXT0);
@@ -2451,7 +2451,7 @@ impl MaldApp {
         .into()
     }
 
-    fn view_editor_content(&self) -> Element<Message> {
+    fn view_editor_content(&self) -> Element<'_, Message> {
         use crate::gui::widgets::empty_state;
 
         if self.open_tabs.is_empty() {
@@ -2523,7 +2523,7 @@ impl MaldApp {
         }
     }
 
-    fn view_graph_content(&self) -> Element<Message> {
+    fn view_graph_content(&self) -> Element<'_, Message> {
         use crate::gui::widgets::empty_state;
         use iced::widget::slider;
 
@@ -2814,7 +2814,7 @@ impl MaldApp {
             .into()
     }
 
-    fn view_search_content(&self) -> Element<Message> {
+    fn view_search_content(&self) -> Element<'_, Message> {
         let iced_theme = self.mald_theme.iced_theme();
         let sub0 = theme::themed(&iced_theme, colors::SUBTEXT0, colors::latte::SUBTEXT0);
         container(
@@ -2830,7 +2830,7 @@ impl MaldApp {
         .into()
     }
 
-    fn view_tasks_content(&self) -> Element<Message> {
+    fn view_tasks_content(&self) -> Element<'_, Message> {
         let iced_theme = self.mald_theme.iced_theme();
         let text_color = theme::themed(&iced_theme, colors::TEXT, colors::latte::TEXT);
         let sub0 = theme::themed(&iced_theme, colors::SUBTEXT0, colors::latte::SUBTEXT0);

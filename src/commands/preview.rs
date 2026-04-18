@@ -120,10 +120,8 @@ fn render_markdown(body: &str) {
                 println!();
             }
             Event::Start(Tag::Paragraph) => {}
-            Event::End(TagEnd::Paragraph) => {
-                if !in_list {
-                    println!();
-                }
+            Event::End(TagEnd::Paragraph) if !in_list => {
+                println!();
             }
             Event::Start(Tag::Emphasis) => {
                 print!("\x1b[3m");

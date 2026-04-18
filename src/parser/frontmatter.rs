@@ -1,4 +1,4 @@
-use serde_yml::Value;
+use serde_norway::Value;
 
 /// Strip YAML frontmatter from content, returning only the body.
 pub fn strip(content: &str) -> String {
@@ -29,7 +29,7 @@ pub fn extract(content: &str) -> (Value, String) {
             .trim_start_matches('\n')
             .to_string();
 
-        match serde_yml::from_str(yaml_str) {
+        match serde_norway::from_str(yaml_str) {
             Ok(value) => (value, body),
             Err(_) => (Value::Mapping(Default::default()), content.to_string()),
         }

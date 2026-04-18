@@ -16,7 +16,7 @@ pub struct MarkdownDocument {
     pub path: Option<std::path::PathBuf>,
     pub title: String,
     pub content: String,
-    pub metadata: serde_yml::Value,
+    pub metadata: serde_norway::Value,
     pub wikilinks: Vec<String>,
     pub markdown_links: Vec<String>,
     pub tags: Vec<String>,
@@ -78,7 +78,7 @@ impl MarkdownDocument {
             .collect()
     }
 
-    fn extract_title(body: &str, metadata: &serde_yml::Value) -> String {
+    fn extract_title(body: &str, metadata: &serde_norway::Value) -> String {
         // Try frontmatter title first
         if let Some(title) = metadata.get("title").and_then(|v| v.as_str()) {
             return title.to_string();

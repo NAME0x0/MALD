@@ -1,5 +1,4 @@
 use anyhow::Result;
-use rand::Rng;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -97,15 +96,11 @@ struct IndexStatus {
 
 /// Generate a random auth token and write it to ~/.mald/daemon.token
 fn generate_auth_token() -> Result<String> {
-    let mut rng = rand::thread_rng();
+    const AUTH_TOKEN_ALPHABET: &[u8] = b"0123456789abcdefghijklmnopqrstuvwxyz";
     let token: String = (0..32)
         .map(|_| {
-            let idx = rng.gen_range(0..36);
-            if idx < 10 {
-                (b'0' + idx) as char
-            } else {
-                (b'a' + idx - 10) as char
-            }
+            let idx = fastrand::usize(..AUTH_TOKEN_ALPHABET.len());
+            AUTH_TOKEN_ALPHABET[idx] as char
         })
         .collect();
 

@@ -1,5 +1,4 @@
 use anyhow::Result;
-use rand::Rng;
 use std::collections::{BinaryHeap, HashMap, HashSet};
 use std::path::Path;
 use wide::f32x8;
@@ -132,8 +131,8 @@ fn cosine_distance(a: &[f32], b: &[f32]) -> f32 {
     }
 }
 
-fn random_level(rng: &mut impl Rng) -> usize {
-    let r: f64 = rng.gen();
+fn random_level() -> usize {
+    let r = fastrand::f64().max(f64::MIN_POSITIVE);
     (-r.ln() * ml()).floor() as usize
 }
 
@@ -159,8 +158,7 @@ impl HnswIndex {
 
     pub fn insert(&mut self, id: u32, vector: Vec<f32>) {
         assert_eq!(vector.len(), self.dim);
-        let mut rng = rand::thread_rng();
-        let level = random_level(&mut rng);
+        let level = random_level();
 
         let mut node = Node {
             id,
@@ -409,8 +407,7 @@ mod tests {
     use super::*;
 
     fn random_vec(dim: usize) -> Vec<f32> {
-        let mut rng = rand::thread_rng();
-        (0..dim).map(|_| rng.gen::<f32>() - 0.5).collect()
+        (0..dim).map(|_| fastrand::f32() - 0.5).collect()
     }
 
     #[test]

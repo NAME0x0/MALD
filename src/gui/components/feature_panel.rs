@@ -113,7 +113,7 @@ fn panel_header(content_type: FeaturePanelContent, is_dark: bool) -> Element<'st
 // Backlinks view
 // ─────────────────────────────────────────────────────────────────────────────
 
-fn view_backlinks(backlinks: &[BacklinkEntry], is_dark: bool) -> Element<Message> {
+fn view_backlinks(backlinks: &[BacklinkEntry], is_dark: bool) -> Element<'_, Message> {
     let sub0 = if is_dark {
         colors::SUBTEXT0
     } else {
@@ -156,7 +156,7 @@ fn view_backlinks(backlinks: &[BacklinkEntry], is_dark: bool) -> Element<Message
     .into()
 }
 
-fn backlink_row(bl: &BacklinkEntry, is_dark: bool) -> Element<Message> {
+fn backlink_row(bl: &BacklinkEntry, is_dark: bool) -> Element<'_, Message> {
     let lavender = if is_dark {
         colors::LAVENDER
     } else {
@@ -191,7 +191,7 @@ fn backlink_row(bl: &BacklinkEntry, is_dark: bool) -> Element<Message> {
 // Outline view
 // ─────────────────────────────────────────────────────────────────────────────
 
-fn view_outline(outline: &[OutlineEntry], is_dark: bool) -> Element<Message> {
+fn view_outline(outline: &[OutlineEntry], is_dark: bool) -> Element<'_, Message> {
     let sub0 = if is_dark {
         colors::SUBTEXT0
     } else {
@@ -235,7 +235,7 @@ fn view_outline(outline: &[OutlineEntry], is_dark: bool) -> Element<Message> {
     .into()
 }
 
-fn outline_row(idx: usize, entry: &OutlineEntry, is_dark: bool) -> Element<Message> {
+fn outline_row(idx: usize, entry: &OutlineEntry, is_dark: bool) -> Element<'_, Message> {
     let teal = if is_dark {
         colors::TEAL
     } else {

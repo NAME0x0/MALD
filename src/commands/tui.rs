@@ -432,7 +432,7 @@ impl TuiApp {
                 }
             }
         }
-        recent_with_time.sort_by(|a, b| b.1.cmp(&a.1));
+        recent_with_time.sort_by_key(|entry| std::cmp::Reverse(entry.1));
         recent_with_time.truncate(10);
         let recent: Vec<String> = recent_with_time.into_iter().map(|(n, _)| n).collect();
 

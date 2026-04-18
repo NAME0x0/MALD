@@ -199,7 +199,7 @@ fn file_entry_row(
     accent_color: iced::Color,
     yellow: iced::Color,
     is_modified: bool,
-) -> Element<Message> {
+) -> Element<'_, Message> {
     let indent = 16.0 * entry.depth as f32;
 
     let chevron: Element<Message> = if entry.is_dir {
@@ -320,7 +320,7 @@ fn search_result_row(
     result: &SearchResult,
     text_color: iced::Color,
     sub_color: iced::Color,
-) -> Element<Message> {
+) -> Element<'_, Message> {
     let title = text(&result.title).size(type_scale::UI).color(text_color);
     let snippet = text(&result.snippet)
         .size(type_scale::CAPTION)

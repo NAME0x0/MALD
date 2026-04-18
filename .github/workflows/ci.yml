@@ -39,19 +39,18 @@ jobs:
 
   audit:
     runs-on: ubuntu-latest
-    continue-on-error: true
-    permissions:
-      contents: read
-      checks: write
     steps:
       - uses: actions/checkout@v5
-      - uses: rustsec/audit-check@v2.0.0
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+      - name: Run cargo audit
+        run: cargo audit
 
   test:
     runs-on: ${{ matrix.os }}
-    needs: [fmt, clippy]
+    needs: [fmt, clippy, audit]
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
