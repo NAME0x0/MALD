@@ -7,9 +7,10 @@ use std::io::{self, IsTerminal, Write};
 use std::path::{Path, PathBuf};
 #[cfg(windows)]
 use std::process::Command;
+#[cfg(windows)]
+use crate::fs::ensure_directory;
 
 use crate::config::ConfigManager;
-use crate::fs::ensure_directory;
 
 pub async fn run(action: Option<crate::cli::SetupAction>) -> Result<()> {
     match action {
