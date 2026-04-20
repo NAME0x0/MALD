@@ -32,7 +32,7 @@ async fn ensure_ollama(client: &OllamaClient) -> Result<()> {
     if !std::io::stderr().is_terminal() {
         return Err(crate::errors::bail_ctx_topic(
             "Cannot connect to Ollama",
-            "Run `mald setup ai` to install Ollama and pull models",
+            "Run `mald ai setup` to install Ollama and pull models",
             "ai",
         ));
     }
@@ -137,12 +137,12 @@ fn load_notes(notes: &[String], kb: Option<&str>) -> Result<Vec<(String, String)
     Ok(results)
 }
 
-/// Load all notes from a KB (for digest/briefing).
+/// Load all notes from a space (for digest/briefing).
 fn load_all_notes(kb: Option<&str>) -> Result<Vec<(String, String)>> {
     let (_config, _typed, kb_name, kb_path) = crate::config::resolve_kb(kb)?;
     if !kb_path.exists() {
         return Err(crate::errors::bail_ctx(
-            format!("Knowledge base '{kb_name}' not found"),
+            format!("Space '{kb_name}' not found"),
             format!("Create it with: `mald kb create {kb_name}`"),
         ));
     }
@@ -165,7 +165,7 @@ fn load_recent_notes(kb: Option<&str>, days: u64) -> Result<Vec<(String, String)
     let (_config, _typed, kb_name, kb_path) = crate::config::resolve_kb(kb)?;
     if !kb_path.exists() {
         return Err(crate::errors::bail_ctx(
-            format!("Knowledge base '{kb_name}' not found"),
+            format!("Space '{kb_name}' not found"),
             format!("Create it with: `mald kb create {kb_name}`"),
         ));
     }
@@ -195,8 +195,8 @@ fn load_recent_notes(kb: Option<&str>, days: u64) -> Result<Vec<(String, String)
 pub async fn chat_cmd(message: Option<&str>, kb: Option<&str>, new_session: bool) -> Result<()> {
     let (config, client) = load_config()?;
     ensure_ollama(&client).await?;
-
-    let kb_name = kb.unwrap_or("personal");
+    let (_cfg, _typed, kb_name, _kb_path) = crate::config::resolve_kb(kb)?;
+    let kb_name = kb_name.as_str();
 
     let mut session = if new_session {
         ChatSession::new(kb_name)
@@ -211,7 +211,7 @@ pub async fn chat_cmd(message: Option<&str>, kb: Option<&str>, new_session: bool
         }
         None => {
             // Interactive REPL
-            println!("MALD AI Chat (kb: {kb_name}) — type /quit to exit\n");
+            println!("MALD AI Chat (space: {kb_name}) — type /quit to exit\n");
             loop {
                 use std::io::Write;
                 print!("you> ");
@@ -283,11 +283,11 @@ async fn do_chat_turn(
 
     let system_prompt = if context.is_empty() {
         format!(
-            "You are a helpful assistant for the knowledge base '{kb_name}'. Answer directly and concisely."
+            "You are a helpful assistant for the space '{kb_name}'. Answer directly and concisely."
         )
     } else {
         format!(
-            "You are a helpful assistant for the knowledge base '{kb_name}'. \
+            "You are a helpful assistant for the space '{kb_name}'. \
              Answer using ONLY the following sources. Cite sources using [1], [2], etc.\n\n{context}"
         )
     };
@@ -496,7 +496,7 @@ pub async fn setup_ai() -> Result<()> {
             println!("    Linux/macOS: curl -fsSL https://ollama.com/install.sh | sh");
             println!("    Windows:     Download from https://ollama.com/download");
             println!();
-            println!("  After installing, run {} again.", "mald setup ai".cyan());
+            println!("  After installing, run {} again.", "mald ai setup".cyan());
             return Ok(());
         }
         println!("  {} Ollama installed\n", "->".green());
@@ -531,7 +531,7 @@ pub async fn setup_ai() -> Result<()> {
         println!();
         println!("  Ollama did not start within 60 seconds.");
         println!("  Start it manually: ollama serve");
-        println!("  Then run {} again.", "mald setup ai".cyan());
+        println!("  Then run {} again.", "mald ai setup".cyan());
         return Ok(());
     }
     println!(" {}", "running".green());
@@ -638,7 +638,7 @@ async fn install_ollama() -> bool {
 pub async fn index(kb_name: &str) -> Result<()> {
     let kb_path = mald_home().join("kb").join(kb_name);
     if !kb_path.exists() {
-        bail!("Knowledge base '{kb_name}' not found");
+        bail!("Space '{kb_name}' not found");
     }
 
     let config_path = mald_home().join("config").join("config.json");
@@ -646,7 +646,7 @@ pub async fn index(kb_name: &str) -> Result<()> {
     let client = OllamaClient::from_config(&config);
     ensure_ollama(&client).await?;
 
-    println!("Indexing knowledge base: {kb_name}");
+    println!("Indexing space: {kb_name}");
     crate::daemon::indexer::full_index(&kb_path, &config).await?;
     println!("Indexing complete.");
     Ok(())

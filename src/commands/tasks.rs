@@ -11,7 +11,7 @@ pub async fn list(kb: Option<&str>, all_kbs: bool, json: bool) -> Result<()> {
         if json {
             println!("[]");
         } else {
-            println!("No knowledge bases found. Run `mald init` first.");
+            println!("No spaces found. Run `mald init` first.");
         }
         return Ok(());
     }
@@ -28,7 +28,7 @@ pub async fn list(kb: Option<&str>, all_kbs: bool, json: bool) -> Result<()> {
             if json {
                 println!("[]");
             } else {
-                println!("Knowledge base '{kb_name}' not found.");
+                println!("Space '{kb_name}' not found.");
             }
             return Ok(());
         }

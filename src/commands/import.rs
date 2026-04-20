@@ -4,7 +4,7 @@ use std::path::Path;
 use crate::fs::ensure_directory;
 
 /// Import markdown files from an external directory (Obsidian vault, Logseq graph,
-/// or any folder of .md files) into a MALD knowledge base.
+/// or any folder of .md files) into a MALD space.
 pub async fn run(source: &str, kb: Option<&str>, flatten: bool) -> Result<()> {
     let source_path = Path::new(source);
     if !source_path.exists() {
@@ -13,9 +13,9 @@ pub async fn run(source: &str, kb: Option<&str>, flatten: bool) -> Result<()> {
 
     let (_config, _typed, kb_name, kb_path) = crate::config::resolve_kb(kb)?;
     if !kb_path.exists() {
-        // Auto-create the KB
+        // Auto-create the space
         ensure_directory(&kb_path)?;
-        println!("Created knowledge base: {kb_name}");
+        println!("Created space: {kb_name}");
     }
 
     let md_files = collect_md_files(source_path)?;

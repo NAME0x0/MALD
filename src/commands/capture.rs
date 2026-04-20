@@ -8,7 +8,7 @@ use crate::fs::{ensure_directory, mald_home};
 pub async fn run(text: &str, kb: Option<&str>, tag: Option<&str>) -> Result<()> {
     let (_config, _typed, kb_name, kb_path) = crate::config::resolve_kb(kb)?;
     if !kb_path.exists() {
-        bail!("Knowledge base '{kb_name}' not found");
+        bail!("Space '{kb_name}' not found");
     }
 
     let now = Local::now();

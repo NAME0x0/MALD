@@ -7,9 +7,7 @@ pub async fn start(kb: Option<&str>) -> Result<()> {
     let (config, typed, kb_name, kb_path) = crate::config::resolve_kb(kb)?;
 
     if !kb_path.exists() {
-        anyhow::bail!(
-            "Knowledge base '{kb_name}' not found. Create it with `mald kb create {kb_name}`"
-        );
+        anyhow::bail!("Space '{kb_name}' not found. Create it with `mald kb create {kb_name}`");
     }
 
     let tmux_enabled = typed.session.tmux_enabled;
@@ -106,7 +104,7 @@ async fn start_shell_session(
     let home = mald_home();
 
     println!("MALD Session: {kb_name}");
-    println!("Knowledge Base: {}", kb_path.display());
+    println!("Space: {}", kb_path.display());
     println!("Type 'exit' to end session.\n");
 
     let shell = if cfg!(windows) { "powershell" } else { "bash" };

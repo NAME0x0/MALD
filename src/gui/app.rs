@@ -154,9 +154,14 @@ pub struct MaldApp {
     // ── New note modal ──
     pub new_note_visible: bool,
     pub new_note_title: String,
+    pub new_note_path: String,
+    pub new_note_kb: String,
 
     // ── KB info ──
     pub current_kb: String,
+    pub known_kbs: Vec<String>,
+    pub detected_editors: Vec<crate::commands::launch::DetectedEditor>,
+    pub mald_shell_available: bool,
     pub settings_form: GuiSettingsForm,
 
     // â”€â”€ Animations â”€â”€
@@ -238,6 +243,13 @@ impl MaldApp {
             editor_preview_panes.resize(split, 0.5);
         }
 
+        let current_kb = load_default_kb_name();
+        let known_kbs = workspace_kbs();
+        let detected_editors = crate::commands::launch::detected_editors();
+        let mald_shell_available = crate::commands::setup::mald_on_path();
+        let settings_form = load_settings_form();
+        let palette_commands = Self::all_commands(&current_kb, &known_kbs);
+
         let app = Self {
             mald_theme: MaldTheme::default(),
             layout: LayoutState::default_editor_layout(),
@@ -290,7 +302,7 @@ impl MaldApp {
 
             palette_visible: false,
             palette_query: String::new(),
-            palette_commands: Self::all_commands(),
+            palette_commands,
             palette_filtered: Vec::new(),
             palette_selected: 0,
 
@@ -309,8 +321,13 @@ impl MaldApp {
             keybindings_visible: false,
             new_note_visible: false,
             new_note_title: String::new(),
-            current_kb: load_default_kb_name(),
-            settings_form: load_settings_form(),
+            new_note_path: String::new(),
+            new_note_kb: current_kb.clone(),
+            current_kb,
+            known_kbs,
+            detected_editors,
+            mald_shell_available,
+            settings_form,
 
             sidebar_animation: None,
             terminal_animation: None,
@@ -340,17 +357,36 @@ impl MaldApp {
 
             search_generation: 0,
             backlinks_generation: 0,
-            graph_generation: 0,
-            tasks_generation: 0,
+            graph_generation: 1,
+            tasks_generation: 1,
 
             last_search_dispatch: None,
         };
 
         // Load file tree + icon font on startup
-        let file_tree_task = IcedTask::perform(load_file_tree(), Message::FileTreeLoaded);
+        let file_tree_task = IcedTask::perform(
+            load_file_tree_for(Some(app.current_kb.clone())),
+            Message::FileTreeLoaded,
+        );
+        let graph_generation = app.graph_generation;
+        let graph_task = IcedTask::perform(
+            load_graph_for(Some(app.current_kb.clone())),
+            move |(nodes, edges)| Message::GraphLoaded(nodes, edges, graph_generation),
+        );
+        let tasks_generation = app.tasks_generation;
+        let tasks_task =
+            IcedTask::perform(load_tasks_for(Some(app.current_kb.clone())), move |tasks| {
+                Message::TasksLoaded(tasks, tasks_generation)
+            });
         let font_task = font::load(BOOTSTRAP_FONT_BYTES).map(|_| Message::Noop);
         let daemon_task = IcedTask::perform(load_daemon_status(), Message::DaemonStatusUpdate);
-        let task = IcedTask::batch([file_tree_task, font_task, daemon_task]);
+        let task = IcedTask::batch([
+            file_tree_task,
+            graph_task,
+            tasks_task,
+            font_task,
+            daemon_task,
+        ]);
 
         (app, task)
     }
@@ -431,15 +467,18 @@ impl MaldApp {
                         self.active_view = ActiveView::Graph;
                         self.graph_generation += 1;
                         let gen = self.graph_generation;
-                        return IcedTask::perform(load_graph(), move |(nodes, edges)| {
-                            Message::GraphLoaded(nodes, edges, gen)
-                        });
+                        let kb_name = self.current_kb.clone();
+                        return IcedTask::perform(
+                            load_graph_for(Some(kb_name)),
+                            move |(nodes, edges)| Message::GraphLoaded(nodes, edges, gen),
+                        );
                     }
                     ActivityMode::Tasks => {
                         self.active_view = ActiveView::Tasks;
                         self.tasks_generation += 1;
                         let gen = self.tasks_generation;
-                        return IcedTask::perform(load_tasks(), move |tasks| {
+                        let kb_name = self.current_kb.clone();
+                        return IcedTask::perform(load_tasks_for(Some(kb_name)), move |tasks| {
                             Message::TasksLoaded(tasks, gen)
                         });
                     }
@@ -613,15 +652,37 @@ impl MaldApp {
                 }
             }
             Message::FileTreeRefresh => {
-                return IcedTask::perform(load_file_tree(), |entries| {
+                let kb_name = self.current_kb.clone();
+                return IcedTask::perform(load_file_tree_for(Some(kb_name)), |entries| {
                     Message::FileTreeLoaded(entries)
                 });
             }
 
             // ── Editor ──
             Message::EditorOpen(path) => {
+                let mut follow_up = Vec::new();
                 if let Some(kb_name) = kb_name_for_path(&path) {
-                    self.current_kb = kb_name;
+                    let space_changed = kb_name != self.current_kb;
+                    self.sync_current_kb(kb_name);
+                    if space_changed {
+                        let kb_name = self.current_kb.clone();
+                        follow_up.push(IcedTask::perform(
+                            load_file_tree_for(Some(kb_name.clone())),
+                            Message::FileTreeLoaded,
+                        ));
+                        self.graph_generation += 1;
+                        let graph_gen = self.graph_generation;
+                        follow_up.push(IcedTask::perform(
+                            load_graph_for(Some(kb_name.clone())),
+                            move |(nodes, edges)| Message::GraphLoaded(nodes, edges, graph_gen),
+                        ));
+                        self.tasks_generation += 1;
+                        let tasks_gen = self.tasks_generation;
+                        follow_up.push(IcedTask::perform(
+                            load_tasks_for(Some(kb_name)),
+                            move |tasks| Message::TasksLoaded(tasks, tasks_gen),
+                        ));
+                    }
                 }
                 // Check if already open
                 if let Some(idx) = self.open_tabs.iter().position(|t| t.path == path) {
@@ -633,10 +694,13 @@ impl MaldApp {
                     self.refresh_markdown_preview(&content_str);
                     self.outline = extract_outline(&content_str);
                     self.active_view = ActiveView::Editor;
+                    if !follow_up.is_empty() {
+                        return IcedTask::batch(follow_up);
+                    }
                 } else {
                     // Async file read — prevents blocking GUI on large/slow files
                     let p = path.clone();
-                    return IcedTask::perform(
+                    follow_up.push(IcedTask::perform(
                         async move {
                             match tokio::fs::read_to_string(&p).await {
                                 Ok(content) => (p, Ok(content)),
@@ -647,7 +711,8 @@ impl MaldApp {
                             }
                         },
                         |(path, result)| Message::EditorFileLoaded(path, result),
-                    );
+                    ));
+                    return IcedTask::batch(follow_up);
                 }
             }
             Message::EditorFileLoaded(path, result) => {
@@ -732,13 +797,34 @@ impl MaldApp {
             }
             Message::EditorSwitchTab(idx) => {
                 if idx < self.open_tabs.len() {
+                    let mut follow_up = Vec::new();
                     // Save current editor text back to tab
                     if let Some(tab) = self.open_tabs.get_mut(self.active_tab) {
                         tab.content = self.editor_content.text();
                     }
                     self.active_tab = idx;
                     if let Some(kb_name) = kb_name_for_path(&self.open_tabs[idx].path) {
-                        self.current_kb = kb_name;
+                        let space_changed = kb_name != self.current_kb;
+                        self.sync_current_kb(kb_name);
+                        if space_changed {
+                            let kb_name = self.current_kb.clone();
+                            follow_up.push(IcedTask::perform(
+                                load_file_tree_for(Some(kb_name.clone())),
+                                Message::FileTreeLoaded,
+                            ));
+                            self.graph_generation += 1;
+                            let graph_gen = self.graph_generation;
+                            follow_up.push(IcedTask::perform(
+                                load_graph_for(Some(kb_name.clone())),
+                                move |(nodes, edges)| Message::GraphLoaded(nodes, edges, graph_gen),
+                            ));
+                            self.tasks_generation += 1;
+                            let tasks_gen = self.tasks_generation;
+                            follow_up.push(IcedTask::perform(
+                                load_tasks_for(Some(kb_name)),
+                                move |tasks| Message::TasksLoaded(tasks, tasks_gen),
+                            ));
+                        }
                     }
                     let content_str = self.open_tabs[idx].content.clone();
                     self.editor_content = text_editor::Content::with_text(&content_str);
@@ -748,6 +834,9 @@ impl MaldApp {
 
                     // Update outline
                     self.outline = extract_outline(&content_str);
+                    if !follow_up.is_empty() {
+                        return IcedTask::batch(follow_up);
+                    }
                 }
             }
             Message::EditorContentChanged(action) => {
@@ -1062,6 +1151,7 @@ impl MaldApp {
 
             // ── Command palette ──
             Message::CommandPaletteOpen => {
+                self.rebuild_palette_commands();
                 self.palette_visible = true;
                 self.palette_query.clear();
                 self.palette_filtered = (0..self.palette_commands.len()).collect();
@@ -1161,9 +1251,11 @@ impl MaldApp {
                     self.activity_mode = ActivityMode::Graph;
                     self.graph_generation += 1;
                     let gen = self.graph_generation;
-                    return IcedTask::perform(load_graph(), move |(nodes, edges)| {
-                        Message::GraphLoaded(nodes, edges, gen)
-                    });
+                    let kb_name = self.current_kb.clone();
+                    return IcedTask::perform(
+                        load_graph_for(Some(kb_name)),
+                        move |(nodes, edges)| Message::GraphLoaded(nodes, edges, gen),
+                    );
                 }
             }
             Message::GraphLoaded(nodes, edges, gen) => {
@@ -1238,7 +1330,8 @@ impl MaldApp {
                     self.activity_mode = ActivityMode::Tasks;
                     self.tasks_generation += 1;
                     let gen = self.tasks_generation;
-                    return IcedTask::perform(load_tasks(), move |tasks| {
+                    let kb_name = self.current_kb.clone();
+                    return IcedTask::perform(load_tasks_for(Some(kb_name)), move |tasks| {
                         Message::TasksLoaded(tasks, gen)
                     });
                 }
@@ -1352,14 +1445,20 @@ impl MaldApp {
             }
             Message::SettingsReset => {
                 self.settings_form = load_settings_form();
+                self.refresh_workspace_cache();
+                self.refresh_runtime_cache();
+                self.rebuild_palette_commands();
             }
             Message::SettingsSaved(result) => match result {
                 Ok(saved) => {
                     let old_shell = self.settings_form.shell.clone();
                     self.settings_form = saved;
+                    self.refresh_runtime_cache();
 
                     if self.open_tabs.is_empty() {
-                        self.current_kb = self.settings_form.default_kb.clone();
+                        self.sync_current_kb(self.settings_form.default_kb.clone());
+                    } else {
+                        self.rebuild_palette_commands();
                     }
 
                     if self.settings_form.shell != old_shell && self.terminal_session.is_some() {
@@ -1378,16 +1477,121 @@ impl MaldApp {
                     return IcedTask::done(Message::ErrorOccurred(error));
                 }
             },
+            Message::PathSetupRun => {
+                return IcedTask::perform(repair_shell_path(), Message::PathSetupCompleted);
+            }
+            Message::PathSetupCompleted(result) => match result {
+                Ok(_) => {
+                    self.mald_shell_available = true;
+                    return IcedTask::done(Message::ToastShow {
+                        level: ToastLevel::Success,
+                        message:
+                            "MALD is ready for Command Prompt and PowerShell. Open a new terminal to use `mald` everywhere."
+                                .into(),
+                    });
+                }
+                Err(error) => {
+                    return IcedTask::done(Message::ErrorOccurred(error));
+                }
+            },
+            Message::CurrentKbSwitch(name) => {
+                let trimmed = name.trim().to_string();
+                if trimmed.is_empty() {
+                    return IcedTask::done(Message::ErrorOccurred(
+                        "Space name cannot be empty".into(),
+                    ));
+                }
+                if trimmed == self.current_kb {
+                    return IcedTask::done(Message::ToastShow {
+                        level: ToastLevel::Info,
+                        message: format!("Already working in `{trimmed}`"),
+                    });
+                }
+                return IcedTask::perform(
+                    save_default_kb_name(trimmed),
+                    Message::CurrentKbSwitched,
+                );
+            }
+            Message::CurrentKbSwitched(result) => match result {
+                Ok(kb_name) => {
+                    self.refresh_workspace_cache();
+                    self.sync_current_kb(kb_name.clone());
+                    self.graph_generation += 1;
+                    let graph_gen = self.graph_generation;
+                    self.tasks_generation += 1;
+                    let tasks_gen = self.tasks_generation;
+                    return IcedTask::batch([
+                        IcedTask::perform(
+                            load_file_tree_for(Some(kb_name.clone())),
+                            Message::FileTreeLoaded,
+                        ),
+                        IcedTask::perform(load_graph_for(Some(kb_name.clone())), move |(nodes, edges)| {
+                            Message::GraphLoaded(nodes, edges, graph_gen)
+                        }),
+                        IcedTask::perform(load_tasks_for(Some(kb_name.clone())), move |tasks| {
+                            Message::TasksLoaded(tasks, tasks_gen)
+                        }),
+                        IcedTask::done(Message::ToastShow {
+                            level: ToastLevel::Success,
+                            message: format!(
+                                "Working space set to `{kb_name}`. Files, tasks, graph, and new notes now follow it."
+                            ),
+                        }),
+                    ]);
+                }
+                Err(error) => {
+                    return IcedTask::done(Message::ErrorOccurred(error));
+                }
+            },
+            Message::DemoSpaceOpen => {
+                return IcedTask::perform(open_demo_space(), Message::DemoSpaceOpened);
+            }
+            Message::DemoSpaceOpened(result) => match result {
+                Ok(path) => {
+                    self.refresh_workspace_cache();
+                    self.sync_current_kb("demo".into());
+                    self.graph_generation += 1;
+                    let graph_gen = self.graph_generation;
+                    self.tasks_generation += 1;
+                    let tasks_gen = self.tasks_generation;
+                    return IcedTask::batch([
+                        IcedTask::perform(load_file_tree_for(Some("demo".into())), Message::FileTreeLoaded),
+                        IcedTask::perform(load_graph_for(Some("demo".into())), move |(nodes, edges)| {
+                            Message::GraphLoaded(nodes, edges, graph_gen)
+                        }),
+                        IcedTask::perform(load_tasks_for(Some("demo".into())), move |tasks| {
+                            Message::TasksLoaded(tasks, tasks_gen)
+                        }),
+                        IcedTask::done(Message::EditorOpen(path)),
+                        IcedTask::done(Message::ToastShow {
+                            level: ToastLevel::Success,
+                            message: "Demo space loaded. Explore freely and switch back whenever you want."
+                                .into(),
+                        }),
+                    ]);
+                }
+                Err(error) => {
+                    return IcedTask::done(Message::ErrorOccurred(error));
+                }
+            },
 
             // ── New Note ──
             Message::NewNotePrompt => {
                 self.new_note_visible = true;
                 self.new_note_title.clear();
+                self.new_note_path.clear();
+                self.new_note_kb = self.current_kb.clone();
                 self.modal_animation = Some(ModalAnimation::open(theme::animation::MODAL_FADE_IN));
                 self.modal_closing_kind = None;
             }
             Message::NewNoteTitleChanged(title) => {
                 self.new_note_title = title;
+            }
+            Message::NewNotePathChanged(path) => {
+                self.new_note_path = path;
+            }
+            Message::NewNoteKbSelected(kb_name) => {
+                self.new_note_kb = kb_name;
             }
             Message::NewNoteCreate(title) => {
                 let trimmed = title.trim().to_string();
@@ -1396,20 +1600,53 @@ impl MaldApp {
                         "Note title cannot be empty".into(),
                     ));
                 }
-                return IcedTask::perform(create_new_note(trimmed), Message::NewNoteCreated);
+                let target_kb = self.new_note_kb.trim().to_string();
+                if target_kb.is_empty() {
+                    return IcedTask::done(Message::ErrorOccurred(
+                        "Choose a space before creating the note".into(),
+                    ));
+                }
+                let target_path = self.new_note_path.trim().to_string();
+                return IcedTask::perform(
+                    create_new_note(
+                        trimmed,
+                        target_kb,
+                        (!target_path.is_empty()).then_some(target_path),
+                    ),
+                    Message::NewNoteCreated,
+                );
             }
             Message::NewNoteCreated(result) => match result {
                 Ok(path) => {
+                    let target_kb =
+                        kb_name_for_path(&path).unwrap_or_else(|| self.current_kb.clone());
+                    self.sync_current_kb(target_kb.clone());
                     self.new_note_title.clear();
+                    self.new_note_path.clear();
+                    self.new_note_kb = target_kb.clone();
                     self.modal_animation =
                         Some(ModalAnimation::close(theme::animation::MODAL_FADE_OUT));
                     self.modal_closing_kind = Some(ModalKind::NewNote);
+                    self.graph_generation += 1;
+                    let graph_gen = self.graph_generation;
+                    self.tasks_generation += 1;
+                    let tasks_gen = self.tasks_generation;
                     return IcedTask::batch([
-                        IcedTask::perform(load_file_tree(), Message::FileTreeLoaded),
+                        IcedTask::perform(
+                            load_file_tree_for(Some(target_kb.clone())),
+                            Message::FileTreeLoaded,
+                        ),
+                        IcedTask::perform(
+                            load_graph_for(Some(target_kb.clone())),
+                            move |(nodes, edges)| Message::GraphLoaded(nodes, edges, graph_gen),
+                        ),
+                        IcedTask::perform(load_tasks_for(Some(target_kb.clone())), move |tasks| {
+                            Message::TasksLoaded(tasks, tasks_gen)
+                        }),
                         IcedTask::done(Message::EditorOpen(path)),
                         IcedTask::done(Message::ToastShow {
                             level: ToastLevel::Success,
-                            message: "New note created".into(),
+                            message: format!("New note created in `{target_kb}`"),
                         }),
                     ]);
                 }
@@ -1727,7 +1964,7 @@ impl MaldApp {
                 self.markdown_preview = markdown_view::parse_markdown("");
             } else {
                 if let Some(kb_name) = kb_name_for_path(&self.open_tabs[self.active_tab].path) {
-                    self.current_kb = kb_name;
+                    self.sync_current_kb(kb_name);
                 }
                 let content_str = self.open_tabs[self.active_tab].content.clone();
                 self.editor_content = text_editor::Content::with_text(&content_str);
@@ -1939,6 +2176,9 @@ impl MaldApp {
             ai_messages: &self.ai_chat_messages,
             ai_input: &self.ai_chat_input,
             settings: &self.settings_form,
+            known_kbs: &self.known_kbs,
+            detected_editors: &self.detected_editors,
+            mald_shell_available: self.mald_shell_available,
             theme,
             modified_paths,
         })
@@ -1952,6 +2192,7 @@ impl MaldApp {
             "Search notes... (Ctrl+Shift+F)",
             self.mald_theme.is_dark,
         );
+        let space_toolbar = self.view_space_toolbar();
 
         // Tab bar
         let tabs: Vec<tab_bar::TabInfo> = self
@@ -1980,6 +2221,7 @@ impl MaldApp {
         if self.terminal_visible || self.terminal_animation.is_some() {
             column![
                 search_bar,
+                space_toolbar,
                 tab_bar,
                 container(content).height(Length::Fill),
                 terminal_panel::view(
@@ -1992,10 +2234,54 @@ impl MaldApp {
             .spacing(0)
             .into()
         } else {
-            column![search_bar, tab_bar, container(content).height(Length::Fill),]
-                .spacing(0)
-                .into()
+            column![
+                search_bar,
+                space_toolbar,
+                tab_bar,
+                container(content).height(Length::Fill),
+            ]
+            .spacing(0)
+            .into()
         }
+    }
+
+    fn view_space_toolbar(&self) -> Element<'_, Message> {
+        let iced_theme = self.mald_theme.iced_theme();
+        let text_color = theme::themed(&iced_theme, colors::TEXT, colors::latte::TEXT);
+        let sub0 = theme::themed(&iced_theme, colors::SUBTEXT0, colors::latte::SUBTEXT0);
+        let lavender = theme::themed(&iced_theme, colors::LAVENDER, colors::latte::LAVENDER);
+
+        let buttons: Vec<Element<Message>> = self
+            .known_kbs
+            .iter()
+            .take(5)
+            .map(|kb_name| self.space_toolbar_button(kb_name.as_str(), text_color, lavender))
+            .collect();
+
+        let hint = if self.known_kbs.len() > 5 {
+            "Ctrl+P shows the rest"
+        } else {
+            "Switch space or create a note"
+        };
+
+        container(
+            row![
+                text("Working space")
+                    .size(theme::type_scale::CAPTION)
+                    .color(sub0),
+                self.signal_badge(self.current_kb.clone(), lavender),
+                row(buttons).spacing(theme::spacing::XS),
+                text(hint).size(theme::type_scale::CAPTION).color(sub0),
+                Space::new().width(Length::Fill),
+                self.action_button("Demo space", Message::DemoSpaceOpen, false),
+                self.action_button("New note", Message::NewNotePrompt, true),
+            ]
+            .spacing(theme::spacing::SM)
+            .align_y(iced::alignment::Vertical::Center),
+        )
+        .padding([theme::spacing::SM as u16, theme::spacing::LG as u16])
+        .style(theme::card_style)
+        .into()
     }
 
     fn view_home(&self) -> Element<'_, Message> {
@@ -2010,7 +2296,6 @@ impl MaldApp {
         let blue = theme::themed(&iced_theme, colors::BLUE, colors::latte::BLUE);
         let yellow = theme::themed(&iced_theme, colors::YELLOW, colors::latte::YELLOW);
         let lavender = theme::themed(&iced_theme, colors::LAVENDER, colors::latte::LAVENDER);
-        let crust = theme::themed(&iced_theme, colors::CRUST, colors::latte::CRUST);
 
         let note_count = self
             .file_tree_entries
@@ -2036,13 +2321,13 @@ impl MaldApp {
             .open_tabs
             .get(self.active_tab)
             .map(|tab| tab.title.clone())
-            .unwrap_or_else(|| "Dashboard".into());
+            .unwrap_or_else(|| "No note open yet".into());
         let graph_hub = self
             .graph_nodes
             .iter()
             .max_by_key(|node| node.degree)
             .map(|node| format!("{} · {} links", node.label, node.degree))
-            .unwrap_or_else(|| "No linked notes yet".into());
+            .unwrap_or_else(|| "Start linking notes to grow the graph".into());
 
         let recent_files: Vec<&FileEntry> = self
             .file_tree_entries
@@ -2057,145 +2342,29 @@ impl MaldApp {
             .filter(|(_, task)| !task.done)
             .take(5)
             .collect();
-
-        let hero = self.panel_card(
+        let spaces_content: Element<Message> = if self.known_kbs.is_empty() {
             column![
-                row![
-                    self.signal_badge(
-                        match self.daemon_status {
-                            DaemonStatus::Running => "Daemon live".into(),
-                            DaemonStatus::Stopped => "Daemon offline".into(),
-                            DaemonStatus::Unknown => "Daemon unknown".into(),
-                        },
-                        match self.daemon_status {
-                            DaemonStatus::Running => green,
-                            DaemonStatus::Stopped => red,
-                            DaemonStatus::Unknown => dim,
-                        },
-                    ),
-                    self.signal_badge(format!("KB {}", self.current_kb), lavender),
-                    self.signal_badge(format!("{modified_count} modified"), yellow),
-                ]
-                .spacing(theme::spacing::SM),
-                Space::new().height(theme::spacing::LG),
-                text("Quiet power for local knowledge.")
-                    .size(theme::type_scale::DISPLAY)
-                    .color(text_color),
-                Space::new().height(theme::spacing::XS),
-                text("MALD keeps your notes private, linked, searchable, and ready to act.")
+                text("No spaces detected yet.")
                     .size(theme::type_scale::BODY)
                     .color(sub1),
-                Space::new().height(theme::spacing::XL),
-                row![
-                    self.stat_card_colored("Notes", note_count.to_string(), blue, sub0),
-                    self.stat_card_colored("Open Tasks", open_task_count.to_string(), yellow, sub0),
-                    self.stat_card_colored("Connected", format!("{connected_ratio}%"), teal, sub0),
-                    self.stat_card_colored("Links", link_count.to_string(), lavender, sub0),
-                ]
-                .spacing(theme::spacing::MD),
-                Space::new().height(theme::spacing::XL),
-                row![
-                    button(
-                        row![
-                            icons::new_file().color(crust),
-                            text("New note").size(theme::type_scale::BODY).color(crust),
-                        ]
-                        .spacing(theme::spacing::SM)
-                    )
-                    .on_press(Message::NewNotePrompt)
-                    .padding([theme::spacing::SM as u16, theme::spacing::XL as u16])
-                    .style(theme::primary_button_style),
-                    button(
-                        row![
-                            icons::search().color(text_color),
-                            text("Search archive").size(theme::type_scale::UI).color(text_color),
-                        ]
-                        .spacing(theme::spacing::XS)
-                    )
-                    .on_press(Message::SearchOpen)
-                    .padding([theme::spacing::SM as u16, theme::spacing::LG as u16])
-                    .style(theme::secondary_button_style),
-                    button(
-                        row![
-                            icons::graph().color(text_color),
-                            text("Inspect graph").size(theme::type_scale::UI).color(text_color),
-                        ]
-                        .spacing(theme::spacing::XS)
-                    )
-                    .on_press(Message::GraphToggle)
-                    .padding([theme::spacing::SM as u16, theme::spacing::LG as u16])
-                    .style(theme::secondary_button_style),
-                    button(
-                        row![
-                            icons::tasks().color(text_color),
-                            text("Review tasks").size(theme::type_scale::UI).color(text_color),
-                        ]
-                        .spacing(theme::spacing::XS)
-                    )
-                    .on_press(Message::TasksToggle)
-                    .padding([theme::spacing::SM as u16, theme::spacing::LG as u16])
-                    .style(theme::secondary_button_style),
-                ]
-                .spacing(theme::spacing::MD),
-                Space::new().height(theme::spacing::LG),
-                self.panel_card(
-                    column![
-                        text("In focus").size(theme::type_scale::CAPTION).color(teal),
-                        text(active_focus).size(theme::type_scale::H3).color(text_color),
-                        text("Press Ctrl+P for commands or Ctrl+Shift+F to jump straight into search.")
-                            .size(theme::type_scale::UI)
-                            .color(sub0),
-                    ]
-                    .spacing(theme::spacing::XS),
-                    None,
-                ),
+                text("Create one from the CLI or load the demo space to explore safely.")
+                    .size(theme::type_scale::UI)
+                    .color(sub0),
             ]
-            .spacing(0),
-            Some(teal),
-        );
-
-        let workspace_card = self.panel_card(
-            column![
-                text("Workspace state").size(theme::type_scale::CAPTION).color(sub0),
-                Space::new().height(theme::spacing::XS),
-                text("Stable, local, inspectable.").size(theme::type_scale::H3).color(text_color),
-                Space::new().height(theme::spacing::SM),
-                text(format!(
-                    "{connected_count} connected notes, {orphan_count} waiting for links, {done_task_count} completed tasks."
-                ))
-                .size(theme::type_scale::BODY)
-                .color(sub1),
-                Space::new().height(theme::spacing::LG),
-                row![
-                    self.signal_badge(format!("{} tabs open", self.open_tabs.len()), blue),
-                    self.signal_badge(format!("{done_task_count} tasks done"), green),
-                ]
-                .spacing(theme::spacing::SM),
-            ]
-            .spacing(0),
-            None,
-        );
-
-        let graph_signal_card = self.panel_card(
-            column![
-                text("Knowledge graph").size(theme::type_scale::CAPTION).color(sub0),
-                Space::new().height(theme::spacing::XS),
-                text(graph_hub).size(theme::type_scale::H3).color(text_color),
-                Space::new().height(theme::spacing::SM),
-                text("Canonical links now render against real note names, so the graph can finally show the structure it already knew about.")
-                    .size(theme::type_scale::BODY)
-                    .color(sub1),
-                Space::new().height(theme::spacing::LG),
-                row![
-                    self.signal_badge(format!("{link_count} rendered links"), lavender),
-                    self.signal_badge(format!("{orphan_count} orphans"), yellow),
-                ]
-                .spacing(theme::spacing::SM),
-            ]
-            .spacing(0),
-            Some(lavender),
-        );
-
+            .spacing(theme::spacing::XS)
+            .into()
+        } else {
+            column(
+                self.known_kbs
+                    .iter()
+                    .take(6)
+                    .cloned()
+                    .map(|kb_name| self.home_kb_button(kb_name, text_color, sub0, lavender))
+                    .collect::<Vec<_>>(),
+            )
+            .spacing(theme::spacing::XS)
+            .into()
+        };
         let recent_content: Element<Message> = if recent_files.is_empty() {
             column![
                 text("No notes yet. Start with one note and one real question.")
@@ -2216,27 +2385,7 @@ impl MaldApp {
                 .collect();
             column(items).spacing(theme::spacing::SM).into()
         };
-
-        let recent_card = self.panel_card(
-            column![
-                row![
-                    text("Recent notes")
-                        .size(theme::type_scale::H3)
-                        .color(text_color),
-                    Space::new().width(Length::Fill),
-                    text("Open, refine, connect.")
-                        .size(theme::type_scale::CAPTION)
-                        .color(sub0),
-                ]
-                .align_y(iced::alignment::Vertical::Center),
-                Space::new().height(theme::spacing::MD),
-                recent_content,
-            ]
-            .spacing(0),
-            Some(blue),
-        );
-
-        let task_content: Element<Message> = if open_tasks.is_empty() {
+        let tasks_content: Element<Message> = if open_tasks.is_empty() {
             column![
                 text("No open loops right now.")
                     .size(theme::type_scale::BODY)
@@ -2255,63 +2404,193 @@ impl MaldApp {
             column(items).spacing(theme::spacing::SM).into()
         };
 
-        let tasks_card = self.panel_card(
+        let focus_card = self.panel_card(
             column![
                 row![
-                    text("Open loops")
-                        .size(theme::type_scale::H3)
-                        .color(text_color),
+                    text("Work now").size(theme::type_scale::CAPTION).color(sub0),
                     Space::new().width(Length::Fill),
-                    text(format!("{open_task_count} active"))
-                        .size(theme::type_scale::CAPTION)
-                        .color(yellow),
+                    self.signal_badge(
+                        match self.daemon_status {
+                            DaemonStatus::Running => "Daemon running".into(),
+                            DaemonStatus::Stopped => "Daemon stopped".into(),
+                            DaemonStatus::Unknown => "Daemon checking".into(),
+                        },
+                        match self.daemon_status {
+                            DaemonStatus::Running => green,
+                            DaemonStatus::Stopped => red,
+                            DaemonStatus::Unknown => dim,
+                        },
+                    ),
                 ]
                 .align_y(iced::alignment::Vertical::Center),
+                Space::new().height(theme::spacing::SM),
+                text(format!("Working in {}", self.current_kb))
+                    .size(theme::type_scale::H1)
+                    .color(text_color),
+                Space::new().height(theme::spacing::XS),
+                text("The dashboard should help you decide the next move fast: continue the current note, create a new one, or jump into search.")
+                    .size(theme::type_scale::BODY)
+                    .color(sub1),
+                Space::new().height(theme::spacing::LG),
+                container(
+                    column![
+                        text("In focus").size(theme::type_scale::CAPTION).color(sub0),
+                        text(active_focus).size(theme::type_scale::H3).color(text_color),
+                        text("Use Ctrl+P for commands, Ctrl+Shift+F for search, and Ctrl+N for a new note.")
+                            .size(theme::type_scale::UI)
+                            .color(sub0),
+                    ]
+                    .spacing(theme::spacing::XS),
+                )
+                .padding(theme::spacing::LG as u16)
+                .style(theme::card_style),
+                Space::new().height(theme::spacing::LG),
+                row![
+                    self.action_button("New note", Message::NewNotePrompt, true),
+                    self.action_button("Search", Message::SearchOpen, false),
+                    self.action_button("Review tasks", Message::TasksToggle, false),
+                    self.action_button("Demo space", Message::DemoSpaceOpen, false),
+                ]
+                .spacing(theme::spacing::SM)
+                .wrap(),
                 Space::new().height(theme::spacing::MD),
-                task_content,
+                row![
+                    self.signal_badge(format!("{modified_count} modified"), lavender),
+                    self.signal_badge(format!("{done_task_count} completed"), green),
+                ]
+                .spacing(theme::spacing::SM)
+                .wrap(),
+            ]
+            .spacing(0),
+            Some(teal),
+        );
+
+        let state_card = self.panel_card(
+            column![
+                text("Workspace state")
+                    .size(theme::type_scale::CAPTION)
+                    .color(sub0),
+                Space::new().height(theme::spacing::XS),
+                text("Health, structure, and space selection")
+                    .size(theme::type_scale::H3)
+                    .color(text_color),
+                Space::new().height(theme::spacing::SM),
+                text("This region is about the archive itself: scale, graph quality, and which space you want to work in.")
+                    .size(theme::type_scale::BODY)
+                    .color(sub1),
+                Space::new().height(theme::spacing::MD),
+                row![
+                    container(self.stat_card_colored("Notes", note_count.to_string(), blue, sub0))
+                        .width(Length::Fill),
+                    container(self.stat_card_colored(
+                        "Open tasks",
+                        open_task_count.to_string(),
+                        yellow,
+                        sub0
+                    ))
+                    .width(Length::Fill),
+                ]
+                .spacing(theme::spacing::SM),
+                row![
+                    container(self.stat_card_colored(
+                        "Connected",
+                        format!("{connected_ratio}%"),
+                        teal,
+                        sub0
+                    ))
+                    .width(Length::Fill),
+                    container(self.stat_card_colored(
+                        "Links",
+                        link_count.to_string(),
+                        lavender,
+                        sub0
+                    ))
+                    .width(Length::Fill),
+                ]
+                .spacing(theme::spacing::SM),
+                Space::new().height(theme::spacing::LG),
+                text("Most connected note")
+                    .size(theme::type_scale::CAPTION)
+                    .color(sub0),
+                text(graph_hub).size(theme::type_scale::UI).color(text_color),
+                text(format!("{orphan_count} notes still need links to become part of the graph."))
+                    .size(theme::type_scale::CAPTION)
+                    .color(sub1),
+                Space::new().height(theme::spacing::LG),
+                text("Spaces").size(theme::type_scale::CAPTION).color(sub0),
+                spaces_content,
+            ]
+            .spacing(0),
+            Some(lavender),
+        );
+
+        let recent_card = self.panel_card(
+            column![
+                row![
+                    text("Continue")
+                        .size(theme::type_scale::CAPTION)
+                        .color(sub0),
+                    Space::new().width(Length::Fill),
+                    text("Recent notes")
+                        .size(theme::type_scale::CAPTION)
+                        .color(blue),
+                ]
+                .align_y(iced::alignment::Vertical::Center),
+                Space::new().height(theme::spacing::XS),
+                text("The quickest way back into flow is usually the note you touched most recently.")
+                    .size(theme::type_scale::BODY)
+                    .color(sub1),
+                Space::new().height(theme::spacing::MD),
+                recent_content,
+            ]
+            .spacing(0),
+            Some(blue),
+        );
+
+        let review_card = self.panel_card(
+            column![
+                row![
+                    text("Review").size(theme::type_scale::CAPTION).color(sub0),
+                    Space::new().width(Length::Fill),
+                    self.signal_badge(format!("{open_task_count} active"), yellow),
+                ]
+                .align_y(iced::alignment::Vertical::Center),
+                Space::new().height(theme::spacing::XS),
+                text("Tasks, graph actions, and the safe next step")
+                    .size(theme::type_scale::H3)
+                    .color(text_color),
+                Space::new().height(theme::spacing::SM),
+                row![
+                    self.action_button("Review tasks", Message::TasksToggle, false),
+                    self.action_button("Inspect graph", Message::GraphToggle, false),
+                    self.action_button("New note", Message::NewNotePrompt, true),
+                ]
+                .spacing(theme::spacing::SM)
+                .wrap(),
+                Space::new().height(theme::spacing::LG),
+                tasks_content,
+                Space::new().height(theme::spacing::LG),
+                text("Safe ways to learn").size(theme::type_scale::CAPTION).color(sub0),
+                text("Use the demo space if you want sample notes, tasks, and wikilinks without touching your real archive.")
+                    .size(theme::type_scale::UI)
+                    .color(sub1),
+                text("If you already know what you want, Ctrl+P gets there faster than browsing.")
+                    .size(theme::type_scale::UI)
+                    .color(sub1),
             ]
             .spacing(0),
             Some(yellow),
         );
 
-        let shortcuts_card = self.panel_card(
-            column![
-                text("Command memory")
-                    .size(theme::type_scale::CAPTION)
-                    .color(sub0),
-                Space::new().height(theme::spacing::XS),
-                text("Ctrl+P").size(theme::type_scale::H3).color(text_color),
-                text("Command palette")
-                    .size(theme::type_scale::UI)
-                    .color(sub1),
-                Space::new().height(theme::spacing::SM),
-                text("Ctrl+Shift+F")
-                    .size(theme::type_scale::H3)
-                    .color(text_color),
-                text("Global search")
-                    .size(theme::type_scale::UI)
-                    .color(sub1),
-                Space::new().height(theme::spacing::SM),
-                text("Ctrl+Shift+G")
-                    .size(theme::type_scale::H3)
-                    .color(text_color),
-                text("Graph view").size(theme::type_scale::UI).color(sub1),
-            ]
-            .spacing(0),
-            None,
-        );
-
         let layout = column![
             row![
-                container(hero).width(Length::FillPortion(3)),
-                container(column![workspace_card, graph_signal_card].spacing(theme::spacing::LG))
-                    .width(Length::FillPortion(2)),
+                container(focus_card).width(Length::FillPortion(1)),
+                container(state_card).width(Length::FillPortion(1)),
             ]
             .spacing(theme::spacing::LG),
             row![
-                container(recent_card).width(Length::FillPortion(3)),
-                container(column![tasks_card, shortcuts_card].spacing(theme::spacing::LG))
-                    .width(Length::FillPortion(2)),
+                container(recent_card).width(Length::FillPortion(1)),
+                container(review_card).width(Length::FillPortion(1)),
             ]
             .spacing(theme::spacing::LG),
         ]
@@ -2396,6 +2675,23 @@ impl MaldApp {
             .into()
     }
 
+    fn action_button(
+        &self,
+        label: &'static str,
+        message: Message,
+        primary: bool,
+    ) -> Element<'static, Message> {
+        let button = button(text(label).size(theme::type_scale::UI))
+            .on_press(message)
+            .padding([theme::spacing::XS as u16, theme::spacing::SM as u16]);
+
+        if primary {
+            button.style(theme::primary_button_style).into()
+        } else {
+            button.style(theme::secondary_button_style).into()
+        }
+    }
+
     fn home_note_button(
         &self,
         label: &str,
@@ -2449,6 +2745,81 @@ impl MaldApp {
         .padding([theme::spacing::SM as u16, theme::spacing::MD as u16])
         .style(theme::list_item_style(false))
         .into()
+    }
+
+    fn home_kb_button(
+        &self,
+        kb_name: String,
+        text_color: iced::Color,
+        sub0: iced::Color,
+        accent: iced::Color,
+    ) -> Element<'static, Message> {
+        let is_active = kb_name == self.current_kb;
+        let target = kb_name.clone();
+        let label_color = if is_active { accent } else { text_color };
+
+        button(
+            row![
+                icons::files().color(label_color),
+                text(kb_name).size(theme::type_scale::UI).color(label_color),
+                Space::new().width(Length::Fill),
+                if is_active {
+                    self.signal_badge("Active".into(), accent)
+                } else {
+                    text("Switch")
+                        .size(theme::type_scale::CAPTION)
+                        .color(sub0)
+                        .into()
+                },
+            ]
+            .spacing(theme::spacing::SM)
+            .align_y(iced::alignment::Vertical::Center),
+        )
+        .on_press(Message::CurrentKbSwitch(target))
+        .padding([theme::spacing::SM as u16, theme::spacing::MD as u16])
+        .style(theme::list_item_style(false))
+        .into()
+    }
+
+    fn space_toolbar_button(
+        &self,
+        kb_name: &str,
+        text_color: iced::Color,
+        accent: iced::Color,
+    ) -> Element<'static, Message> {
+        let is_active = kb_name == self.current_kb;
+        let label = kb_name.to_string();
+        let button_text = text(label.clone())
+            .size(theme::type_scale::CAPTION)
+            .color(if is_active { accent } else { text_color });
+
+        button(button_text)
+            .on_press(Message::CurrentKbSwitch(label))
+            .padding([4, 10])
+            .style(theme::ghost_button_style(is_active))
+            .into()
+    }
+
+    fn rebuild_palette_commands(&mut self) {
+        self.palette_commands = Self::all_commands(&self.current_kb, &self.known_kbs);
+    }
+
+    fn refresh_workspace_cache(&mut self) {
+        self.known_kbs = workspace_kbs();
+    }
+
+    fn refresh_runtime_cache(&mut self) {
+        self.detected_editors = crate::commands::launch::detected_editors();
+        self.mald_shell_available = crate::commands::setup::mald_on_path();
+    }
+
+    fn sync_current_kb(&mut self, kb_name: String) {
+        self.current_kb = kb_name.clone();
+        self.settings_form.default_kb = kb_name;
+        if !self.new_note_visible {
+            self.new_note_kb = self.current_kb.clone();
+        }
+        self.rebuild_palette_commands();
     }
 
     fn view_editor_content(&self) -> Element<'_, Message> {
@@ -2594,21 +2965,18 @@ impl MaldApp {
                     .color(sub1_color),
                 Space::new().height(theme::spacing::LG),
                 row![
-                    button(
-                        text(if self.graph_settings_visible { "Hide controls" } else { "Tune physics" })
-                            .size(theme::type_scale::UI)
-                    )
-                    .on_press(Message::GraphSettingsToggle)
-                    .padding([theme::spacing::XS as u16, theme::spacing::SM as u16])
-                    .style(theme::secondary_button_style),
-                    button(text("Reset view").size(theme::type_scale::UI))
-                        .on_press(Message::GraphViewReset)
-                        .padding([theme::spacing::XS as u16, theme::spacing::SM as u16])
-                        .style(theme::secondary_button_style),
-                    button(text("Reset forces").size(theme::type_scale::UI))
-                        .on_press(Message::GraphPhysicsReset)
-                        .padding([theme::spacing::XS as u16, theme::spacing::SM as u16])
-                        .style(theme::secondary_button_style),
+                    self.action_button(
+                        if self.graph_settings_visible {
+                            "Hide controls"
+                        } else {
+                            "Tune physics"
+                        },
+                        Message::GraphSettingsToggle,
+                        false,
+                    ),
+                    self.action_button("Reset view", Message::GraphViewReset, false),
+                    self.action_button("Reset forces", Message::GraphPhysicsReset, false),
+                    self.action_button("New note", Message::NewNotePrompt, true),
                     Space::new().width(Length::Fill),
                     text(format!("Hub: {hub_label}"))
                         .size(theme::type_scale::UI)
@@ -2816,16 +3184,137 @@ impl MaldApp {
 
     fn view_search_content(&self) -> Element<'_, Message> {
         let iced_theme = self.mald_theme.iced_theme();
+        let text_color = theme::themed(&iced_theme, colors::TEXT, colors::latte::TEXT);
         let sub0 = theme::themed(&iced_theme, colors::SUBTEXT0, colors::latte::SUBTEXT0);
+        let sub1 = theme::themed(&iced_theme, colors::SUBTEXT1, colors::latte::SUBTEXT1);
+        let blue = theme::themed(&iced_theme, colors::BLUE, colors::latte::BLUE);
+        let lavender = theme::themed(&iced_theme, colors::LAVENDER, colors::latte::LAVENDER);
+        let yellow = theme::themed(&iced_theme, colors::YELLOW, colors::latte::YELLOW);
+        let query = self.search_query.trim();
+        let query_label = if query.is_empty() {
+            "Waiting for a search".to_string()
+        } else {
+            format!("Query: {query}")
+        };
+
+        let header = self.panel_card(
+            column![
+                row![
+                    self.signal_badge(format!("Working space {}", self.current_kb), lavender),
+                    self.signal_badge(format!("{} results", self.search_results.len()), blue),
+                    if query.is_empty() {
+                        self.signal_badge("Type above to search".into(), yellow)
+                    } else {
+                        self.signal_badge("Search is live".into(), yellow)
+                    },
+                ]
+                .spacing(theme::spacing::SM),
+                Space::new().height(theme::spacing::LG),
+                text("Search across your notes")
+                    .size(theme::type_scale::DISPLAY)
+                    .color(text_color),
+                Space::new().height(theme::spacing::XS),
+                text("Use the search bar above. Results stay visible here so you can scan them without losing the rest of the app.")
+                    .size(theme::type_scale::BODY)
+                    .color(sub1),
+                Space::new().height(theme::spacing::LG),
+                row![
+                    self.action_button("Focus search", Message::SearchOpen, false),
+                    self.action_button("New note", Message::NewNotePrompt, true),
+                    self.action_button("Open demo space", Message::DemoSpaceOpen, false),
+                    Space::new().width(Length::Fill),
+                    text(query_label)
+                        .size(theme::type_scale::UI)
+                        .color(sub0),
+                ]
+                .spacing(theme::spacing::SM)
+                .align_y(iced::alignment::Vertical::Center),
+            ]
+            .spacing(0),
+            Some(blue),
+        );
+
+        let body: Element<Message> = if query.is_empty() {
+            self.panel_card(
+                column![
+                    text("Try one of these")
+                        .size(theme::type_scale::H3)
+                        .color(text_color),
+                    Space::new().height(theme::spacing::SM),
+                    text("nebula lattice").size(theme::type_scale::BODY).color(lavender),
+                    text("amber harbor review")
+                        .size(theme::type_scale::BODY)
+                        .color(lavender),
+                    text("meeting rhythm reset")
+                        .size(theme::type_scale::BODY)
+                        .color(lavender),
+                    Space::new().height(theme::spacing::MD),
+                    text("Search works across titles and note bodies. The sidebar stays useful for narrow drilling, while this screen gives you room to scan results comfortably.")
+                        .size(theme::type_scale::BODY)
+                        .color(sub1),
+                ]
+                .spacing(0),
+                Some(lavender),
+            )
+        } else if self.search_results.is_empty() {
+            crate::gui::widgets::empty_state::presets::no_search_results(self.mald_theme.is_dark)
+        } else {
+            let items: Vec<Element<Message>> = self
+                .search_results
+                .iter()
+                .enumerate()
+                .map(|(i, result)| {
+                    button(
+                        column![
+                            text(result.title.clone())
+                                .size(theme::type_scale::BODY)
+                                .color(text_color),
+                            text(result.snippet.clone())
+                                .size(theme::type_scale::UI)
+                                .color(sub0),
+                        ]
+                        .spacing(theme::spacing::XS)
+                        .padding(theme::spacing::MD as u16),
+                    )
+                    .on_press(Message::SearchResultSelect(i))
+                    .width(Length::Fill)
+                    .style(theme::list_item_style(false))
+                    .into()
+                })
+                .collect();
+
+            self.panel_card(
+                column![
+                    row![
+                        text("Results")
+                            .size(theme::type_scale::H3)
+                            .color(text_color),
+                        Space::new().width(Length::Fill),
+                        text("Open a result to jump straight into the note.")
+                            .size(theme::type_scale::CAPTION)
+                            .color(sub0),
+                    ]
+                    .align_y(iced::alignment::Vertical::Center),
+                    Space::new().height(theme::spacing::MD),
+                    column(items).spacing(theme::spacing::SM),
+                ]
+                .spacing(0),
+                Some(lavender),
+            )
+        };
+
         container(
-            text("Search results appear in the sidebar")
-                .size(theme::type_scale::BODY)
-                .color(sub0),
+            scrollable(
+                column![header, body]
+                    .spacing(theme::spacing::LG)
+                    .padding(theme::spacing::XXL as u16)
+                    .max_width(1080),
+            )
+            .style(theme::scrollable_style),
         )
         .width(Length::Fill)
         .height(Length::Fill)
         .center_x(Length::Fill)
-        .center_y(Length::Fill)
         .style(theme::editor_style)
         .into()
     }
@@ -2834,81 +3323,208 @@ impl MaldApp {
         let iced_theme = self.mald_theme.iced_theme();
         let text_color = theme::themed(&iced_theme, colors::TEXT, colors::latte::TEXT);
         let sub0 = theme::themed(&iced_theme, colors::SUBTEXT0, colors::latte::SUBTEXT0);
+        let sub1 = theme::themed(&iced_theme, colors::SUBTEXT1, colors::latte::SUBTEXT1);
         let dim = theme::themed(&iced_theme, colors::SURFACE2, colors::latte::SURFACE2);
         let green = theme::themed(&iced_theme, colors::GREEN, colors::latte::GREEN);
         let yellow = theme::themed(&iced_theme, colors::YELLOW, colors::latte::YELLOW);
+        let blue = theme::themed(&iced_theme, colors::BLUE, colors::latte::BLUE);
+        let open_count = self.tasks.iter().filter(|task| !task.done).count();
+        let done_count = self.tasks.iter().filter(|task| task.done).count();
 
-        let header = row![
-            text("Tasks").size(theme::type_scale::H2).color(text_color),
-            Space::new().width(Length::Fill),
-            button(if self.tasks_kanban {
-                "List View"
-            } else {
-                "Kanban View"
-            })
-            .on_press(Message::TaskToggleView)
-            .padding([theme::spacing::XS, theme::spacing::SM])
-            .style(theme::secondary_button_style),
-        ]
-        .padding([theme::spacing::SM as u16, theme::spacing::LG as u16])
-        .spacing(theme::spacing::SM);
-
-        if self.tasks.is_empty() {
-            return column![
-                header,
-                container(
-                    text("No tasks found. Add - [ ] items to your notes.")
-                        .size(theme::type_scale::BODY)
+        let header = self.panel_card(
+            column![
+                row![
+                    self.signal_badge(format!("Working space {}", self.current_kb), blue),
+                    self.signal_badge(format!("{open_count} open"), yellow),
+                    self.signal_badge(format!("{done_count} done"), green),
+                ]
+                .spacing(theme::spacing::SM),
+                Space::new().height(theme::spacing::LG),
+                text("Tasks from ordinary notes")
+                    .size(theme::type_scale::DISPLAY)
+                    .color(text_color),
+                Space::new().height(theme::spacing::XS),
+                text("MALD pulls `- [ ]` tasks out of your notes so work stays close to context instead of living in a separate system.")
+                    .size(theme::type_scale::BODY)
+                    .color(sub1),
+                Space::new().height(theme::spacing::LG),
+                row![
+                    self.action_button(
+                        if self.tasks_kanban { "List view" } else { "Kanban view" },
+                        Message::TaskToggleView,
+                        false,
+                    ),
+                    self.action_button("New note", Message::NewNotePrompt, true),
+                    self.action_button("Open demo space", Message::DemoSpaceOpen, false),
+                    Space::new().width(Length::Fill),
+                    text("Open a task to jump back to the note that owns it.")
+                        .size(theme::type_scale::UI)
                         .color(sub0),
-                )
-                .center_x(Length::Fill)
-                .center_y(Length::Fill)
-                .width(Length::Fill)
-                .height(Length::Fill),
+                ]
+                .spacing(theme::spacing::SM)
+                .align_y(iced::alignment::Vertical::Center),
             ]
-            .into();
-        }
+            .spacing(0),
+            Some(yellow),
+        );
 
-        let items: Vec<Element<Message>> = self
-            .tasks
-            .iter()
-            .enumerate()
-            .map(|(i, task)| {
-                let checkbox = if task.done {
-                    icons::check_box().color(green)
-                } else {
-                    icons::empty_box().color(yellow)
-                };
+        let body: Element<Message> = if self.tasks.is_empty() {
+            crate::gui::widgets::empty_state::presets::no_tasks(self.mald_theme.is_dark)
+        } else if self.tasks_kanban {
+            let open_items: Vec<Element<Message>> = self
+                .tasks
+                .iter()
+                .enumerate()
+                .filter(|(_, task)| !task.done)
+                .map(|(i, task)| {
+                    button(
+                        column![
+                            text(task.text.clone())
+                                .size(theme::type_scale::BODY)
+                                .color(text_color),
+                            text(format!("in {}", task.note))
+                                .size(theme::type_scale::CAPTION)
+                                .color(dim),
+                        ]
+                        .spacing(theme::spacing::XS)
+                        .padding(theme::spacing::MD as u16),
+                    )
+                    .on_press(Message::TaskClick(i))
+                    .width(Length::Fill)
+                    .style(theme::list_item_style(false))
+                    .into()
+                })
+                .collect();
 
-                button(
-                    row![
-                        checkbox,
-                        text(&task.text)
-                            .size(theme::type_scale::BODY)
-                            .color(if task.done { sub0 } else { text_color }),
-                        Space::new().width(Length::Fill),
-                        text(&task.note).size(theme::type_scale::CAPTION).color(dim),
-                    ]
-                    .spacing(theme::spacing::SM)
-                    .padding(theme::spacing::SM),
+            let done_items: Vec<Element<Message>> = self
+                .tasks
+                .iter()
+                .enumerate()
+                .filter(|(_, task)| task.done)
+                .map(|(i, task)| {
+                    button(
+                        column![
+                            text(task.text.clone())
+                                .size(theme::type_scale::BODY)
+                                .color(sub0),
+                            text(format!("in {}", task.note))
+                                .size(theme::type_scale::CAPTION)
+                                .color(dim),
+                        ]
+                        .spacing(theme::spacing::XS)
+                        .padding(theme::spacing::MD as u16),
+                    )
+                    .on_press(Message::TaskClick(i))
+                    .width(Length::Fill)
+                    .style(theme::list_item_style(false))
+                    .into()
+                })
+                .collect();
+
+            row![
+                container(
+                    self.panel_card(
+                        column![
+                            row![
+                                text("Open").size(theme::type_scale::H3).color(text_color),
+                                Space::new().width(Length::Fill),
+                                self.signal_badge(open_count.to_string(), yellow),
+                            ]
+                            .align_y(iced::alignment::Vertical::Center),
+                            Space::new().height(theme::spacing::MD),
+                            column(open_items).spacing(theme::spacing::SM),
+                        ]
+                        .spacing(0),
+                        Some(yellow),
+                    )
                 )
-                .on_press(Message::TaskClick(i))
-                .width(Length::Fill)
-                .style(theme::list_item_style(false))
-                .into()
-            })
-            .collect();
+                .width(Length::FillPortion(1)),
+                container(
+                    self.panel_card(
+                        column![
+                            row![
+                                text("Done").size(theme::type_scale::H3).color(text_color),
+                                Space::new().width(Length::Fill),
+                                self.signal_badge(done_count.to_string(), green),
+                            ]
+                            .align_y(iced::alignment::Vertical::Center),
+                            Space::new().height(theme::spacing::MD),
+                            column(done_items).spacing(theme::spacing::SM),
+                        ]
+                        .spacing(0),
+                        Some(green),
+                    )
+                )
+                .width(Length::FillPortion(1)),
+            ]
+            .spacing(theme::spacing::LG)
+            .into()
+        } else {
+            let items: Vec<Element<Message>> = self
+                .tasks
+                .iter()
+                .enumerate()
+                .map(|(i, task)| {
+                    let checkbox = if task.done {
+                        icons::check_box().color(green)
+                    } else {
+                        icons::empty_box().color(yellow)
+                    };
 
-        column![
-            header,
-            scrollable(
-                column(items)
-                    .spacing(theme::spacing::XS)
-                    .padding(theme::spacing::LG)
+                    button(
+                        row![
+                            checkbox,
+                            text(task.text.clone())
+                                .size(theme::type_scale::BODY)
+                                .color(if task.done { sub0 } else { text_color }),
+                            Space::new().width(Length::Fill),
+                            text(task.note.clone())
+                                .size(theme::type_scale::CAPTION)
+                                .color(dim),
+                        ]
+                        .spacing(theme::spacing::SM)
+                        .padding(theme::spacing::SM),
+                    )
+                    .on_press(Message::TaskClick(i))
+                    .width(Length::Fill)
+                    .style(theme::list_item_style(false))
+                    .into()
+                })
+                .collect();
+
+            self.panel_card(
+                column![
+                    row![
+                        text("Task list")
+                            .size(theme::type_scale::H3)
+                            .color(text_color),
+                        Space::new().width(Length::Fill),
+                        text("Click any item to open the source note.")
+                            .size(theme::type_scale::CAPTION)
+                            .color(sub0),
+                    ]
+                    .align_y(iced::alignment::Vertical::Center),
+                    Space::new().height(theme::spacing::MD),
+                    column(items).spacing(theme::spacing::XS),
+                ]
+                .spacing(0),
+                Some(blue),
             )
-            .height(Length::Fill)
+        };
+
+        container(
+            scrollable(
+                column![header, body]
+                    .spacing(theme::spacing::LG)
+                    .padding(theme::spacing::XXL as u16)
+                    .max_width(1080),
+            )
             .style(theme::scrollable_style),
-        ]
+        )
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .center_x(Length::Fill)
+        .style(theme::editor_style)
         .into()
     }
 
@@ -3061,30 +3677,81 @@ impl MaldApp {
         let iced_theme = self.mald_theme.iced_theme();
         let text_color = theme::themed(&iced_theme, colors::TEXT, colors::latte::TEXT);
         let sub0 = theme::themed(&iced_theme, colors::SUBTEXT0, colors::latte::SUBTEXT0);
+        let sub1 = theme::themed(&iced_theme, colors::SUBTEXT1, colors::latte::SUBTEXT1);
         let teal = theme::themed(&iced_theme, colors::TEAL, colors::latte::TEAL);
+        let lavender = theme::themed(&iced_theme, colors::LAVENDER, colors::latte::LAVENDER);
 
-        let input = text_input("Give the note a clear title...", &self.new_note_title)
+        let title_input = text_input("Give the note a clear title...", &self.new_note_title)
             .on_input(Message::NewNoteTitleChanged)
             .on_submit(Message::NewNoteCreate(self.new_note_title.clone()))
             .padding(theme::spacing::MD)
             .width(Length::Fill)
             .style(theme::search_input_style);
 
+        let path_input = text_input(
+            "Optional folder inside the space, e.g. inbox or projects/api",
+            &self.new_note_path,
+        )
+        .on_input(Message::NewNotePathChanged)
+        .on_submit(Message::NewNoteCreate(self.new_note_title.clone()))
+        .padding(theme::spacing::MD)
+        .width(Length::Fill)
+        .style(theme::search_input_style);
+
+        let space_buttons: Vec<Element<Message>> = self
+            .known_kbs
+            .iter()
+            .cloned()
+            .map(|kb_name| {
+                let is_active = kb_name == self.new_note_kb;
+                button(
+                    text(kb_name.clone())
+                        .size(theme::type_scale::CAPTION)
+                        .color(if is_active { lavender } else { text_color }),
+                )
+                .on_press(Message::NewNoteKbSelected(kb_name))
+                .padding([4, 10])
+                .style(theme::ghost_button_style(is_active))
+                .into()
+            })
+            .collect();
+
+        let destination_label = if self.new_note_path.trim().is_empty() {
+            format!("Space: {} · Folder: /", self.new_note_kb)
+        } else {
+            format!(
+                "Space: {} · Folder: /{}",
+                self.new_note_kb,
+                self.new_note_path.trim().replace('\\', "/")
+            )
+        };
+
         let content = column![
             text("Create a new note")
                 .size(theme::type_scale::H2)
                 .color(text_color),
-            text("MALD will create the note, index it, and open it immediately.")
+            text("Choose the space and folder up front. MALD will create the note, index it, and open it immediately.")
                 .size(theme::type_scale::BODY)
                 .color(sub0),
             Space::new().height(theme::spacing::SM),
-            input,
+            title_input,
+            path_input,
+            column![
+                text("Target space")
+                    .size(theme::type_scale::CAPTION)
+                    .color(sub0),
+                row(space_buttons).spacing(theme::spacing::XS),
+                text(destination_label)
+                    .size(theme::type_scale::UI)
+                    .color(sub1),
+            ]
+            .spacing(theme::spacing::XS),
             text("Use a concrete working title. Rename later if the idea sharpens.")
                 .size(theme::type_scale::CAPTION)
                 .color(teal),
             Space::new().height(theme::spacing::SM),
             row![
-                button(text("Create note").size(theme::type_scale::UI))
+                button(text(format!("Create in {}", self.new_note_kb)).size(theme::type_scale::UI))
                     .on_press(Message::NewNoteCreate(self.new_note_title.clone()))
                     .padding([theme::spacing::SM as u16, theme::spacing::LG as u16])
                     .style(theme::primary_button_style),
@@ -3128,6 +3795,7 @@ impl MaldApp {
 
         let bindings = vec![
             ("Ctrl+P", "Command palette"),
+            ("Ctrl+N", "New note"),
             ("Ctrl+Shift+F", "Global search"),
             ("Ctrl+B", "Toggle sidebar"),
             ("Ctrl+J", "Toggle terminal"),
@@ -3461,8 +4129,8 @@ impl MaldApp {
         self.move_editor_cursor_to(line, 1);
     }
 
-    fn all_commands() -> Vec<PaletteCommand> {
-        vec![
+    fn all_commands(current_kb: &str, kbs: &[String]) -> Vec<PaletteCommand> {
+        let mut commands = vec![
             PaletteCommand {
                 id: "new_note".into(),
                 label: "New Note".into(),
@@ -3548,10 +4216,36 @@ impl MaldApp {
                 label: "Doctor".into(),
                 description: "Run self-diagnostics".into(),
             },
-        ]
+            PaletteCommand {
+                id: "demo".into(),
+                label: "Open Demo Space".into(),
+                description: "Load the safe sample notes and switch the working space to demo."
+                    .into(),
+            },
+        ];
+
+        if kbs.len() > 1 {
+            for kb_name in kbs {
+                if kb_name == current_kb {
+                    continue;
+                }
+                commands.push(PaletteCommand {
+                    id: format!("switch_kb:{kb_name}"),
+                    label: format!("Switch Space: {kb_name}"),
+                    description: "Change the working space for new notes, AI, and launch context."
+                        .into(),
+                });
+            }
+        }
+
+        commands
     }
 
     fn execute_palette_command(&mut self, cmd: &PaletteCommand) -> IcedTask<Message> {
+        if let Some(kb_name) = cmd.id.strip_prefix("switch_kb:") {
+            return IcedTask::done(Message::CurrentKbSwitch(kb_name.to_string()));
+        }
+
         match cmd.id.as_str() {
             "new_note" => IcedTask::done(Message::NewNotePrompt),
             "search" => IcedTask::done(Message::SearchOpen),
@@ -3581,6 +4275,7 @@ impl MaldApp {
                 self.push_terminal_line("> mald doctor");
                 IcedTask::perform(run_doctor_report(), Message::DoctorCompleted)
             }
+            "demo" => IcedTask::done(Message::DemoSpaceOpen),
             _ => IcedTask::none(),
         }
     }
@@ -3597,6 +4292,8 @@ fn handle_key_press(key: keyboard::Key, modifiers: keyboard::Modifiers) -> Optio
     match (modifiers.control(), modifiers.shift(), &key) {
         // Ctrl+P → command palette
         (true, false, Key::Character(c)) if c.as_str() == "p" => Some(Message::CommandPaletteOpen),
+        // Ctrl+N → new note
+        (true, false, Key::Character(c)) if c.as_str() == "n" => Some(Message::NewNotePrompt),
         // Ctrl+Shift+F → search
         (true, true, Key::Character(c)) if c.as_str() == "f" => Some(Message::SearchOpen),
         // Ctrl+B → toggle sidebar
@@ -3727,6 +4424,10 @@ async fn save_settings_form(mut form: GuiSettingsForm) -> Result<GuiSettingsForm
     Ok(form)
 }
 
+async fn repair_shell_path() -> Result<String, String> {
+    crate::commands::setup::ensure_shell_command().map_err(|error| error.to_string())
+}
+
 fn normalize_settings_value(value: &str, default: &str) -> String {
     let trimmed = value.trim();
     if trimmed.is_empty() {
@@ -3744,6 +4445,10 @@ fn load_default_kb_name() -> String {
         }
     }
     "personal".into()
+}
+
+fn workspace_kbs() -> Vec<String> {
+    crate::commands::kb::available_kbs().unwrap_or_default()
 }
 
 fn kb_name_for_path(path: &std::path::Path) -> Option<String> {
@@ -3791,7 +4496,7 @@ fn decode_markdown_target(target: &str) -> String {
 fn resolve_note_in_kb(kb_name: &str, note_name: &str) -> Option<PathBuf> {
     let target_key = kb_note_key(kb_name, note_name);
 
-    load_kb_files()
+    load_kb_files(None)
         .into_iter()
         .find(|file| kb_note_key(&file.kb_name, &file.name) == target_key)
         .map(|file| file.path)
@@ -3838,9 +4543,25 @@ fn resolve_markdown_link_target(
     resolve_note_in_kb(current_kb, &decoded)
 }
 
-async fn create_new_note(title: String) -> Result<PathBuf, String> {
-    crate::commands::new::create_note(&title, None)
+async fn create_new_note(
+    title: String,
+    kb_name: String,
+    path: Option<String>,
+) -> Result<PathBuf, String> {
+    crate::commands::new::create_note(&title, Some(&kb_name), path.as_deref())
         .await
+        .map_err(|error| error.to_string())
+}
+
+async fn open_demo_space() -> Result<PathBuf, String> {
+    crate::commands::demo::activate_demo_space(false)
+        .map(|space| space.entry_note)
+        .map_err(|error| error.to_string())
+}
+
+async fn save_default_kb_name(kb_name: String) -> Result<String, String> {
+    crate::commands::kb::set_default_kb_sync(&kb_name)
+        .map(|_| kb_name)
         .map_err(|error| error.to_string())
 }
 
@@ -3927,15 +4648,20 @@ async fn perform_ai_chat_stream(
     Ok(())
 }
 
-async fn load_file_tree() -> Vec<FileEntry> {
+async fn load_file_tree_for(kb_name: Option<String>) -> Vec<FileEntry> {
     tracing::debug!("Loading file tree");
     let kb_dir = crate::fs::mald_home().join("kb");
     if !kb_dir.exists() {
         tracing::debug!("KB directory does not exist");
         return Vec::new();
     }
+    let root = kb_name
+        .as_ref()
+        .map(|name| kb_dir.join(name))
+        .filter(|path| path.exists())
+        .unwrap_or(kb_dir);
     let mut entries = Vec::new();
-    collect_entries(&kb_dir, 0, &mut entries);
+    collect_entries(&root, 0, &mut entries);
     tracing::debug!("Loaded {} file tree entries", entries.len());
     entries
 }
@@ -4048,7 +4774,7 @@ struct KbFile {
 }
 
 /// Read all markdown files from all KBs once. Returns the shared snapshot.
-fn load_kb_files() -> Vec<KbFile> {
+fn load_kb_files(kb_filter: Option<&str>) -> Vec<KbFile> {
     let kb_dir = crate::fs::mald_home().join("kb");
     if !kb_dir.exists() {
         return Vec::new();
@@ -4065,6 +4791,11 @@ fn load_kb_files() -> Vec<KbFile> {
                 .file_name()
                 .map(|s| s.to_string_lossy().to_string())
                 .unwrap_or_default();
+            if let Some(filter) = kb_filter {
+                if kb_name != filter {
+                    continue;
+                }
+            }
 
             if let Ok(md_files) = crate::fs::find_files(&dir, "md") {
                 for f in md_files {
@@ -4101,8 +4832,8 @@ fn graph_node_id(path: &std::path::Path) -> String {
     path.to_string_lossy().to_string()
 }
 
-async fn load_graph() -> (Vec<GraphNode>, Vec<GraphEdge>) {
-    let kb_files = load_kb_files();
+async fn load_graph_for(kb_name: Option<String>) -> (Vec<GraphNode>, Vec<GraphEdge>) {
+    let kb_files = load_kb_files(kb_name.as_deref());
     if kb_files.is_empty() {
         return (Vec::new(), Vec::new());
     }
@@ -4190,8 +4921,8 @@ async fn load_graph() -> (Vec<GraphNode>, Vec<GraphEdge>) {
     (nodes, edges)
 }
 
-async fn load_tasks() -> Vec<TaskItem> {
-    let kb_files = load_kb_files();
+async fn load_tasks_for(kb_name: Option<String>) -> Vec<TaskItem> {
+    let kb_files = load_kb_files(kb_name.as_deref());
     let mut tasks = Vec::new();
 
     for kf in &kb_files {
@@ -4236,7 +4967,7 @@ async fn load_backlinks(path: PathBuf) -> Vec<BacklinkEntry> {
         .unwrap_or_default();
     let target_key = kb_note_key(&target_kb, &target_name);
 
-    let kb_files = load_kb_files();
+    let kb_files = load_kb_files(Some(&target_kb));
     let mut backlinks = Vec::new();
 
     for kf in &kb_files {

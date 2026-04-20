@@ -65,32 +65,40 @@ fn main() -> anyhow::Result<()> {
         );
     }
 
-    let cli = cli::Cli::parse();
+    let mut cli = match cli::Cli::try_parse() {
+        Ok(cli) => cli,
+        Err(err) => cli::print_parse_error_and_exit(err),
+    };
     tracing::debug!(
         elapsed_ms = startup_time.elapsed().as_millis(),
         "CLI parsed"
     );
 
-    // GUI case: no args, no --tui, and stdout IS a terminal → launch GPU app OUTSIDE tokio runtime
-    // (iced creates its own runtime internally, can't nest in tokio)
-    // When stdout is NOT a terminal (e.g., tests, pipes), we go through cli::run() which shows the dashboard.
-    #[cfg(feature = "gui")]
-    {
-        let is_interactive = std::io::IsTerminal::is_terminal(&std::io::stdout());
-        if cli.command.is_none() && cli.args.is_empty() && !cli.tui && !is_daemon && is_interactive
-        {
-            let startup_ms = startup_time.elapsed().as_millis();
-            tracing::info!(startup_ms, "launching GUI");
-            if startup_ms > 500 {
-                tracing::warn!(startup_ms, "startup exceeded 500ms target");
-            }
-            if let Err(err) = gui::run() {
-                use crossterm::style::Stylize;
-                eprintln!("{}: {:?}", "error".red().bold(), err);
-                std::process::exit(1);
-            }
+    if let Some(cli::Command::Launch { kb }) = &cli.command {
+        let query = if kb.is_empty() {
+            None
+        } else {
+            Some(kb.join(" "))
+        };
+        let selected = commands::kb::resolve_launch_target(query.as_deref())?;
+        let Some(selected) = selected else {
             return Ok(());
+        };
+        commands::kb::set_default_kb_sync(&selected)?;
+        cli.command = Some(cli::Command::Gui);
+    }
+
+    let wants_gui = matches!(cli.command, Some(cli::Command::Gui))
+        || (cli.command.is_none() && cli.args.is_empty() && !cli.tui && !is_daemon);
+
+    if wants_gui {
+        if !fs::mald_home().exists() {
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()?
+                .block_on(commands::wizard::run())?;
         }
+        launch_gui(startup_time);
     }
 
     // Everything else needs tokio runtime
@@ -100,6 +108,37 @@ fn main() -> anyhow::Result<()> {
         .enable_all()
         .build()?
         .block_on(async_main(cli, is_daemon, startup_time))
+}
+
+#[cfg(feature = "gui")]
+fn launch_gui(startup_time: Instant) -> ! {
+    let startup_ms = startup_time.elapsed().as_millis();
+    tracing::info!(startup_ms, "launching GUI");
+    if startup_ms > 500 {
+        tracing::warn!(startup_ms, "startup exceeded 500ms target");
+    }
+    if let Err(err) = gui::run() {
+        use crossterm::style::Stylize;
+        eprintln!("{}: {:?}", "error".red().bold(), err);
+        std::process::exit(1);
+    }
+    std::process::exit(0);
+}
+
+#[cfg(not(feature = "gui"))]
+fn launch_gui(startup_time: Instant) -> ! {
+    let startup_ms = startup_time.elapsed().as_millis();
+    tracing::info!(startup_ms, "GUI unavailable, launching TUI instead");
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("current-thread runtime");
+    if let Err(err) = runtime.block_on(commands::tui::run_full_tui()) {
+        use crossterm::style::Stylize;
+        eprintln!("{}: {:?}", "error".red().bold(), err);
+        std::process::exit(1);
+    }
+    std::process::exit(0);
 }
 
 async fn async_main(cli: cli::Cli, is_daemon: bool, startup_time: Instant) -> anyhow::Result<()> {

@@ -7,7 +7,7 @@ pub async fn run(query: &str, kb: Option<&str>) -> Result<()> {
     let (_config, typed, kb_name, kb_path) = crate::config::resolve_kb(kb)?;
     if !kb_path.exists() {
         return Err(crate::errors::bail_ctx(
-            format!("Knowledge base '{kb_name}' not found"),
+            format!("Space '{kb_name}' not found"),
             format!("Create it with: `mald kb create {kb_name}`"),
         ));
     }
@@ -47,7 +47,7 @@ pub async fn run(query: &str, kb: Option<&str>) -> Result<()> {
 
     if matches.is_empty() {
         return Err(crate::errors::bail_ctx(
-            format!("No notes matching '{query}' in kb '{kb_name}'"),
+            format!("No notes matching '{query}' in space '{kb_name}'"),
             "Create a new note with: `mald new \"Title\"`",
         ));
     }
@@ -83,9 +83,7 @@ pub async fn run(query: &str, kb: Option<&str>) -> Result<()> {
     };
 
     let editor = typed.editor.clone();
-    std::process::Command::new(&editor)
-        .arg(path.to_str().unwrap())
-        .status()?;
+    crate::commands::launch::open_in_editor(&editor, path.as_os_str())?;
 
     Ok(())
 }

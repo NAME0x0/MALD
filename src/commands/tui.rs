@@ -10,9 +10,21 @@ use ratatui::{
 };
 use std::io::stdout;
 use std::path::PathBuf;
+use std::time::Instant;
 
+use crate::commands::{demo, kb};
 use crate::fs::mald_home;
 use crate::index::metadata::{FtsResult, MetadataStore};
+
+const HOME_TIPS: &[&str] = &[
+    "Tip: press `s` to switch spaces without leaving the TUI.",
+    "Tip: press `n` to create a note without leaving the terminal UI.",
+    "Tip: press `/` to jump into search from home or tasks.",
+    "Tip: press `d` on Home to load the safe demo space.",
+    "Tip: press `Enter` on a result, file, or task to open it instantly.",
+    "Tip: `Esc` takes you back home instead of throwing you out of MALD.",
+    "Tip: create tasks with `- [ ]` inside notes and MALD will surface them automatically.",
+];
 
 // ─── Views ─────────────────────────────────────────────────────────
 
@@ -74,6 +86,9 @@ struct TuiApp {
     open_file_external: Option<String>,
     all_note_names: Vec<String>,
     daemon_running: bool,
+    tip_started: Instant,
+    space_picker: Option<SpacePickerState>,
+    new_note: Option<NewNoteState>,
 }
 
 struct HomeState {
@@ -81,6 +96,8 @@ struct HomeState {
     recent: Vec<String>,
     tasks: Vec<(String, String)>,
     version: String,
+    current_kb: String,
+    workspace: String,
 }
 
 struct SearchState {
@@ -104,6 +121,123 @@ struct TasksState {
     selected: ListState,
 }
 
+struct SpacePickerState {
+    query: String,
+    candidates: Vec<kb::KbCandidate>,
+    selected: ListState,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum NewNoteFocus {
+    Title,
+    Path,
+    Space,
+}
+
+struct NewNoteState {
+    title: String,
+    path: String,
+    spaces: Vec<String>,
+    selected: ListState,
+    focus: NewNoteFocus,
+    error: Option<String>,
+}
+
+impl SpacePickerState {
+    fn refresh(&mut self) {
+        let query = self.query.trim();
+        self.candidates = kb::ranked_kbs((!query.is_empty()).then_some(query)).unwrap_or_default();
+
+        if self.candidates.is_empty() {
+            self.selected.select(None);
+        } else {
+            let index = self
+                .selected
+                .selected()
+                .unwrap_or(0)
+                .min(self.candidates.len().saturating_sub(1));
+            self.selected.select(Some(index));
+        }
+    }
+
+    fn move_selection(&mut self, delta: i32) {
+        if self.candidates.is_empty() {
+            self.selected.select(None);
+            return;
+        }
+
+        let current = self.selected.selected().unwrap_or(0) as i32;
+        let next = (current + delta).clamp(0, self.candidates.len() as i32 - 1) as usize;
+        self.selected.select(Some(next));
+    }
+
+    fn selected_name(&self) -> Option<String> {
+        self.selected
+            .selected()
+            .and_then(|index| self.candidates.get(index))
+            .map(|candidate| candidate.name.clone())
+    }
+}
+
+impl NewNoteState {
+    fn new(current_kb: &str) -> Self {
+        let spaces = kb::available_kbs().unwrap_or_default();
+        let selected_index = spaces
+            .iter()
+            .position(|name| name == current_kb)
+            .or_else(|| (!spaces.is_empty()).then_some(0));
+        let mut selected = ListState::default();
+        selected.select(selected_index);
+
+        Self {
+            title: String::new(),
+            path: String::new(),
+            spaces,
+            selected,
+            focus: NewNoteFocus::Title,
+            error: None,
+        }
+    }
+
+    fn selected_space(&self) -> Option<&str> {
+        self.selected
+            .selected()
+            .and_then(|index| self.spaces.get(index))
+            .map(|name| name.as_str())
+    }
+
+    fn move_selection(&mut self, delta: i32) {
+        if self.spaces.is_empty() {
+            self.selected.select(None);
+            return;
+        }
+
+        let current = self.selected.selected().unwrap_or(0) as i32;
+        let next = (current + delta).clamp(0, self.spaces.len() as i32 - 1) as usize;
+        self.selected.select(Some(next));
+    }
+
+    fn cycle_focus(&mut self, backwards: bool) {
+        self.focus = match (self.focus, backwards) {
+            (NewNoteFocus::Title, false) => NewNoteFocus::Path,
+            (NewNoteFocus::Path, false) => NewNoteFocus::Space,
+            (NewNoteFocus::Space, false) => NewNoteFocus::Title,
+            (NewNoteFocus::Title, true) => NewNoteFocus::Space,
+            (NewNoteFocus::Path, true) => NewNoteFocus::Title,
+            (NewNoteFocus::Space, true) => NewNoteFocus::Path,
+        };
+    }
+
+    fn destination_label(&self) -> String {
+        let space = self.selected_space().unwrap_or("no space");
+        if self.path.trim().is_empty() {
+            format!("{space} /")
+        } else {
+            format!("{space} /{}", self.path.trim().replace('\\', "/"))
+        }
+    }
+}
+
 // ─── Editor State ──────────────────────────────────────────────────
 
 struct EditorState {
@@ -119,6 +253,7 @@ struct EditorState {
     forward_links: Vec<String>,
     tags: Vec<String>,
     status_msg: String,
+    confirm_discard: bool,
 }
 
 struct Autocomplete {
@@ -144,6 +279,7 @@ impl EditorState {
             forward_links: Vec::new(),
             tags: Vec::new(),
             status_msg: "No file open. Open a file from Browse or Search.".into(),
+            confirm_discard: false,
         }
     }
 
@@ -181,6 +317,7 @@ impl EditorState {
                 self.tags.len(),
             );
             self.file_path = Some(path);
+            self.confirm_discard = false;
             let _ = all_note_names; // used for autocomplete context
         }
     }
@@ -190,6 +327,7 @@ impl EditorState {
             let content = self.lines.join("\n");
             if std::fs::write(path, &content).is_ok() {
                 self.modified = false;
+                self.confirm_discard = false;
                 self.status_msg = format!("Saved {}", path.display());
 
                 // Re-parse links after save
@@ -212,6 +350,7 @@ impl EditorState {
             line.insert(col, c);
             self.cursor_col = col + 1;
             self.modified = true;
+            self.confirm_discard = false;
         }
     }
 
@@ -229,6 +368,7 @@ impl EditorState {
                 line.remove(col - 1);
                 self.cursor_col = col - 1;
                 self.modified = true;
+                self.confirm_discard = false;
             }
         } else if self.cursor_row > 0 {
             // Join with previous line
@@ -237,6 +377,7 @@ impl EditorState {
             self.cursor_col = self.lines[self.cursor_row].len();
             self.lines[self.cursor_row].push_str(&current);
             self.modified = true;
+            self.confirm_discard = false;
         }
     }
 
@@ -245,10 +386,12 @@ impl EditorState {
         if self.cursor_col < line_len {
             self.lines[self.cursor_row].remove(self.cursor_col);
             self.modified = true;
+            self.confirm_discard = false;
         } else if self.cursor_row + 1 < self.lines.len() {
             let next = self.lines.remove(self.cursor_row + 1);
             self.lines[self.cursor_row].push_str(&next);
             self.modified = true;
+            self.confirm_discard = false;
         }
     }
 
@@ -261,6 +404,7 @@ impl EditorState {
         self.lines.insert(self.cursor_row, rest);
         self.cursor_col = 0;
         self.modified = true;
+        self.confirm_discard = false;
     }
 
     fn move_up(&mut self) {
@@ -386,10 +530,14 @@ impl TuiApp {
         let home = mald_home();
         let config_path = home.join("config").join("config.json");
         let config = crate::config::ConfigManager::load(&config_path).ok();
+        let current_kb = crate::config::resolve_kb(None)
+            .ok()
+            .map(|(_, _, kb_name, _)| kb_name)
+            .unwrap_or_else(|| "personal".into());
         let ext_editor = config
             .as_ref()
             .map(|c| c.typed().editor.clone())
-            .unwrap_or_else(|| "nvim".into());
+            .unwrap_or_else(|| crate::config::manager::TypedConfig::default().editor);
 
         let meta_path = home.join("index").join("metadata.db");
         let meta = if meta_path.exists() {
@@ -493,6 +641,8 @@ impl TuiApp {
                 recent,
                 tasks: tasks_home,
                 version: env!("CARGO_PKG_VERSION").to_string(),
+                current_kb,
+                workspace: home.display().to_string(),
             },
             browse: BrowseState {
                 files: all_files,
@@ -511,12 +661,88 @@ impl TuiApp {
             open_file_external: None,
             all_note_names,
             daemon_running,
+            tip_started: Instant::now(),
+            space_picker: None,
+            new_note: None,
         }
     }
 
     fn open_in_editor(&mut self, path: &str) {
         self.editor.load_file(path, &self.all_note_names);
         self.view = View::Edit;
+    }
+
+    fn current_tip(&self) -> &'static str {
+        let step = (self.tip_started.elapsed().as_secs() / 7) as usize;
+        HOME_TIPS[step % HOME_TIPS.len()]
+    }
+
+    fn open_space_picker(&mut self, initial_query: impl Into<String>) {
+        let mut picker = SpacePickerState {
+            query: initial_query.into(),
+            candidates: Vec::new(),
+            selected: ListState::default(),
+        };
+        picker.refresh();
+        self.space_picker = Some(picker);
+    }
+
+    fn open_new_note(&mut self) {
+        self.new_note = Some(NewNoteState::new(&self.home.current_kb));
+    }
+
+    fn switch_space(&mut self, name: &str) {
+        if kb::set_default_kb_sync(name).is_ok() {
+            *self = TuiApp::new();
+        }
+    }
+
+    fn submit_new_note(&mut self) {
+        let Some(state) = self.new_note.as_mut() else {
+            return;
+        };
+
+        let title = state.title.trim().to_string();
+        if title.is_empty() {
+            state.error = Some("Give the note a title before creating it.".into());
+            return;
+        }
+
+        let Some(space) = state.selected_space().map(str::to_string) else {
+            state.error = Some("Choose a target space first.".into());
+            return;
+        };
+
+        let path = state.path.trim().to_string();
+        match crate::commands::new::create_note_sync(
+            &title,
+            Some(&space),
+            (!path.is_empty()).then_some(path.as_str()),
+        ) {
+            Ok(note_path) => {
+                let _ = kb::set_default_kb_sync(&space);
+                *self = TuiApp::new();
+                self.open_in_editor(&note_path.to_string_lossy());
+                self.editor.status_msg = format!(
+                    "Created note in {space}. You can keep writing here or press Ctrl+E for your external editor."
+                );
+            }
+            Err(error) => {
+                if let Some(state) = self.new_note.as_mut() {
+                    state.error = Some(error.to_string());
+                }
+            }
+        }
+    }
+
+    fn activate_demo_space(&mut self) {
+        if let Ok(space) = demo::activate_demo_space(false) {
+            let entry = space.entry_note.to_string_lossy().to_string();
+            *self = TuiApp::new();
+            self.open_in_editor(&entry);
+            self.editor.status_msg =
+                "Demo space loaded. Explore safely; nothing here can break your real notes.".into();
+        }
     }
 }
 
@@ -542,9 +768,7 @@ pub async fn run_full_tui() -> Result<()> {
 
     if let Ok(()) = result {
         if let Some(path) = app.open_file_external.take() {
-            std::process::Command::new(&app.ext_editor)
-                .arg(&path)
-                .status()?;
+            crate::commands::launch::open_in_editor(&app.ext_editor, &path)?;
         }
     }
 
@@ -562,7 +786,7 @@ pub fn run_search_tui() -> Result<()> {
         }
     }
     if !meta_path.exists() {
-        println!("No knowledge bases indexed. Run `mald init` first.");
+        println!("No spaces indexed yet. Run `mald init` first.");
         return Ok(());
     }
 
@@ -586,7 +810,7 @@ pub fn run_search_tui() -> Result<()> {
         let config_path = mald_home().join("config").join("config.json");
         let config = crate::config::ConfigManager::load(&config_path)?;
         let editor = config.typed().editor.clone();
-        std::process::Command::new(&editor).arg(&path).status()?;
+        crate::commands::launch::open_in_editor(&editor, &path)?;
     }
     Ok(())
 }
@@ -608,6 +832,89 @@ fn run_app_loop(
 
                 if app.show_help {
                     app.show_help = false;
+                    continue;
+                }
+
+                if app.new_note.is_some() {
+                    let mut submit = false;
+                    let mut close = false;
+
+                    if let Some(state) = app.new_note.as_mut() {
+                        match key.code {
+                            KeyCode::Esc => close = true,
+                            KeyCode::Enter => submit = true,
+                            KeyCode::Tab => state.cycle_focus(false),
+                            KeyCode::BackTab => state.cycle_focus(true),
+                            KeyCode::Up if state.focus == NewNoteFocus::Space => {
+                                state.move_selection(-1)
+                            }
+                            KeyCode::Down if state.focus == NewNoteFocus::Space => {
+                                state.move_selection(1)
+                            }
+                            KeyCode::Backspace => {
+                                match state.focus {
+                                    NewNoteFocus::Title => {
+                                        state.title.pop();
+                                    }
+                                    NewNoteFocus::Path => {
+                                        state.path.pop();
+                                    }
+                                    NewNoteFocus::Space => {}
+                                }
+                                state.error = None;
+                            }
+                            KeyCode::Char(c) => {
+                                match state.focus {
+                                    NewNoteFocus::Title => state.title.push(c),
+                                    NewNoteFocus::Path => state.path.push(c),
+                                    NewNoteFocus::Space => {}
+                                }
+                                state.error = None;
+                            }
+                            _ => {}
+                        }
+                    }
+
+                    if submit {
+                        app.submit_new_note();
+                    }
+                    if close {
+                        app.new_note = None;
+                    }
+                    continue;
+                }
+
+                if app.space_picker.is_some() {
+                    let mut selected_space = None;
+                    let mut close_picker = false;
+
+                    if let Some(picker) = app.space_picker.as_mut() {
+                        match key.code {
+                            KeyCode::Esc => close_picker = true,
+                            KeyCode::Enter => {
+                                selected_space = picker.selected_name();
+                                close_picker = true;
+                            }
+                            KeyCode::Up => picker.move_selection(-1),
+                            KeyCode::Down => picker.move_selection(1),
+                            KeyCode::Backspace => {
+                                picker.query.pop();
+                                picker.refresh();
+                            }
+                            KeyCode::Char(c) => {
+                                picker.query.push(c);
+                                picker.refresh();
+                            }
+                            _ => {}
+                        }
+                    }
+
+                    if let Some(selected) = selected_space {
+                        app.switch_space(&selected);
+                    }
+                    if close_picker {
+                        app.space_picker = None;
+                    }
                     continue;
                 }
 
@@ -679,11 +986,13 @@ fn run_app_loop(
                     if key.code == KeyCode::Char('q')
                         && key.modifiers.contains(KeyModifiers::CONTROL)
                     {
-                        if app.editor.modified {
+                        if app.editor.modified && !app.editor.confirm_discard {
+                            app.editor.confirm_discard = true;
                             app.editor.status_msg =
-                                "Unsaved changes! Ctrl+S to save, Ctrl+Q again to discard.".into();
-                            app.editor.modified = false; // allow second Ctrl+Q to quit
+                                "Unsaved changes. Ctrl+S saves; Ctrl+Q again discards and returns home."
+                                    .into();
                         } else {
+                            app.editor.confirm_discard = false;
                             app.view = View::Home;
                         }
                         continue;
@@ -747,13 +1056,31 @@ fn run_app_loop(
                             app.search.preview.clear();
                         } else if app.browse.filtering {
                             app.browse.filtering = false;
+                        } else if app.view != View::Home {
+                            app.view = View::Home;
                         } else {
-                            return Ok(());
+                            continue;
                         }
                         continue;
                     }
-                    KeyCode::Char('?') if app.view != View::Search => {
+                    KeyCode::Char('?') => {
                         app.show_help = true;
+                        continue;
+                    }
+                    KeyCode::Char('n') if app.view != View::Search => {
+                        app.open_new_note();
+                        continue;
+                    }
+                    KeyCode::Char('s') if app.view != View::Search => {
+                        app.open_space_picker(String::new());
+                        continue;
+                    }
+                    KeyCode::Char('d') if app.view == View::Home => {
+                        app.activate_demo_space();
+                        continue;
+                    }
+                    KeyCode::Char('/') if app.view != View::Search && app.view != View::Browse => {
+                        app.view = View::Search;
                         continue;
                     }
                     KeyCode::Tab => {
@@ -1102,7 +1429,7 @@ fn draw_app(f: &mut Frame, app: &mut TuiApp) {
     f.render_widget(tabs, chunks[0]);
 
     match app.view {
-        View::Home => draw_home(f, &app.home, chunks[1]),
+        View::Home => draw_home(f, &app.home, app.current_tip(), chunks[1]),
         View::Search => draw_search_in_area(f, &mut app.search, chunks[1]),
         View::Browse => draw_browse(f, &mut app.browse, chunks[1]),
         View::Tasks => draw_tasks(f, &mut app.tasks, chunks[1]),
@@ -1110,11 +1437,15 @@ fn draw_app(f: &mut Frame, app: &mut TuiApp) {
     }
 
     let status_text = match app.view {
-        View::Home => "  Tab cycle  1-5 jump  ? help  q quit",
-        View::Search => "  Type to search  Up/Down select  Enter open in editor  Tab next",
-        View::Browse => "  Up/Down  Enter edit  / filter  d trash  Tab next  q quit",
-        View::Tasks => "  Up/Down  Enter open note  Tab next  q quit",
-        View::Edit => "  Ctrl+S save  Ctrl+Q close  Ctrl+E ext editor  [[ autocomplete",
+        View::Home => {
+            "  n new note  / search  s switch space  d demo  3 browse  4 tasks  ? help  q quit"
+        }
+        View::Search => "  Type to search  Up/Down select  Enter open note  Esc home  Tab next",
+        View::Browse => {
+            "  n new note  Up/Down  Enter edit  / filter  d trash  s switch space  Esc home"
+        }
+        View::Tasks => "  n new note  Up/Down  Enter open note  / search  s switch space  Esc home",
+        View::Edit => "  Ctrl+S save  Ctrl+Q close  Ctrl+E ext editor  [[ autocomplete  Esc home",
     };
     let status = Paragraph::new(status_text).style(Style::default().fg(Color::DarkGray));
     f.render_widget(status, chunks[2]);
@@ -1122,12 +1453,20 @@ fn draw_app(f: &mut Frame, app: &mut TuiApp) {
     if app.show_help {
         draw_help_overlay(f);
     }
+
+    if let Some(picker) = &mut app.space_picker {
+        draw_space_picker(f, picker);
+    }
+
+    if let Some(new_note) = &mut app.new_note {
+        draw_new_note_overlay(f, new_note);
+    }
 }
 
-fn draw_home(f: &mut Frame, home: &HomeState, area: Rect) {
+fn draw_home(f: &mut Frame, home: &HomeState, tip: &str, area: Rect) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Length(3), Constraint::Min(1)])
+        .constraints([Constraint::Length(5), Constraint::Min(1)])
         .split(area);
 
     let total_notes: usize = home.kb_stats.iter().map(|(_, c)| c).sum();
@@ -1138,18 +1477,51 @@ fn draw_home(f: &mut Frame, home: &HomeState, area: Rect) {
         .collect::<Vec<_>>()
         .join("  ");
     let top_text = format!(
-        "  {} notes across {} KBs  |  {}",
+        "  Workspace: {}\n  Current Space: {}  |  {} notes across {} spaces  |  {}\n  {}",
+        home.workspace,
+        home.current_kb,
         total_notes,
         home.kb_stats.len(),
-        kbs_text
+        kbs_text,
+        tip,
     );
     let top = Paragraph::new(top_text).block(Block::default().borders(Borders::BOTTOM));
     f.render_widget(top, chunks[0]);
 
     let cols = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+        .constraints([
+            Constraint::Percentage(34),
+            Constraint::Percentage(33),
+            Constraint::Percentage(33),
+        ])
         .split(chunks[1]);
+
+    let quick_actions = if home.kb_stats.is_empty() {
+        vec![
+            ListItem::new("  Run `mald init` to create a workspace"),
+            ListItem::new("  Run `mald kb create <name>` to create a space"),
+            ListItem::new("  Run `mald --help` for the full command list"),
+        ]
+    } else {
+        vec![
+            ListItem::new("  / Search notes instantly"),
+            ListItem::new("  n Create a note in the right space and folder"),
+            ListItem::new("  s Switch spaces with ranking + fuzzy match"),
+            ListItem::new("  3 Browse files"),
+            ListItem::new("  4 Review open tasks"),
+            ListItem::new("  d Load the safe demo space"),
+            ListItem::new("  mald gui  Open the desktop app"),
+            ListItem::new("  mald today  Open today's note"),
+            ListItem::new("  mald new \"Title\" --path inbox"),
+        ]
+    };
+    let quick_actions_list = List::new(quick_actions).block(
+        Block::default()
+            .borders(Borders::ALL)
+            .title(" Quick Start "),
+    );
+    f.render_widget(quick_actions_list, cols[0]);
 
     let recent_items: Vec<ListItem> = home
         .recent
@@ -1166,7 +1538,7 @@ fn draw_home(f: &mut Frame, home: &HomeState, area: Rect) {
             .borders(Borders::ALL)
             .title(" Recent (7d) "),
     );
-    f.render_widget(recent_list, cols[0]);
+    f.render_widget(recent_list, cols[1]);
 
     let task_items: Vec<ListItem> = home
         .tasks
@@ -1189,7 +1561,7 @@ fn draw_home(f: &mut Frame, home: &HomeState, area: Rect) {
             .borders(Borders::ALL)
             .title(format!(" Tasks ({}) ", home.tasks.len())),
     );
-    f.render_widget(task_list, cols[1]);
+    f.render_widget(task_list, cols[2]);
 }
 
 fn draw_search_standalone(f: &mut Frame, state: &mut SearchState) {
@@ -1325,6 +1697,161 @@ fn draw_tasks(f: &mut Frame, state: &mut TasksState, area: Rect) {
     .highlight_style(Style::default().bg(Color::DarkGray).fg(Color::White))
     .highlight_symbol("> ");
     f.render_stateful_widget(list, area, &mut state.selected);
+}
+
+fn draw_space_picker(f: &mut Frame, picker: &mut SpacePickerState) {
+    let area = centered_rect(66, 58, f.area());
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(3),
+            Constraint::Min(1),
+            Constraint::Length(2),
+        ])
+        .split(area);
+
+    let query = Paragraph::new(picker.query.as_str()).block(
+        Block::default()
+            .borders(Borders::ALL)
+            .title(" Switch Space "),
+    );
+    f.render_widget(Clear, area);
+    f.render_widget(query, chunks[0]);
+    f.set_cursor_position((chunks[0].x + picker.query.len() as u16 + 1, chunks[0].y + 1));
+
+    let items: Vec<ListItem> = if picker.candidates.is_empty() {
+        vec![ListItem::new("  No spaces match this intent yet")]
+    } else {
+        picker
+            .candidates
+            .iter()
+            .map(|candidate| {
+                ListItem::new(format!(
+                    "  {:<18}  {}  ·  {} notes",
+                    candidate.name, candidate.reason, candidate.note_count
+                ))
+            })
+            .collect()
+    };
+    let list = List::new(items)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(" Recommended Spaces "),
+        )
+        .highlight_symbol("> ")
+        .highlight_style(Style::default().bg(Color::DarkGray).fg(Color::White));
+    f.render_stateful_widget(list, chunks[1], &mut picker.selected);
+
+    let footer = picker
+        .selected_name()
+        .and_then(|name| {
+            picker
+                .candidates
+                .iter()
+                .find(|candidate| candidate.name == name)
+                .map(|candidate| {
+                    format!(
+                        "Enter switches to {} · {} · Esc cancels",
+                        candidate.name, candidate.reason
+                    )
+                })
+        })
+        .unwrap_or_else(|| {
+            "Type a project, client, or space name · Enter switches · Esc cancels".into()
+        });
+    let footer = Paragraph::new(footer).style(Style::default().fg(Color::DarkGray));
+    f.render_widget(footer, chunks[2]);
+}
+
+fn draw_new_note_overlay(f: &mut Frame, state: &mut NewNoteState) {
+    let area = centered_rect(70, 68, f.area());
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(3),
+            Constraint::Length(3),
+            Constraint::Length(9),
+            Constraint::Length(2),
+            Constraint::Length(2),
+        ])
+        .split(area);
+
+    let title =
+        Paragraph::new(state.title.as_str()).block(Block::default().borders(Borders::ALL).title(
+            match state.focus {
+                NewNoteFocus::Title => " Note Title * ",
+                _ => " Note Title ",
+            },
+        ));
+    let path =
+        Paragraph::new(state.path.as_str()).block(Block::default().borders(Borders::ALL).title(
+            match state.focus {
+                NewNoteFocus::Path => " Folder Inside Space ",
+                _ => " Folder Inside Space (optional) ",
+            },
+        ));
+
+    f.render_widget(Clear, area);
+    f.render_widget(title, chunks[0]);
+    f.render_widget(path, chunks[1]);
+
+    let items: Vec<ListItem> = if state.spaces.is_empty() {
+        vec![ListItem::new("  No spaces available yet")]
+    } else {
+        state
+            .spaces
+            .iter()
+            .map(|space| {
+                let marker = if state.selected_space() == Some(space.as_str()) {
+                    "  Active destination"
+                } else {
+                    ""
+                };
+                ListItem::new(format!("  {space}{marker}"))
+            })
+            .collect()
+    };
+    let list = List::new(items)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(match state.focus {
+                    NewNoteFocus::Space => " Target Space * ",
+                    _ => " Target Space ",
+                }),
+        )
+        .highlight_symbol("> ")
+        .highlight_style(Style::default().bg(Color::DarkGray).fg(Color::White));
+    f.render_stateful_widget(list, chunks[2], &mut state.selected);
+
+    let destination = Paragraph::new(format!("Create in {}", state.destination_label()))
+        .style(Style::default().fg(Color::Cyan));
+    f.render_widget(destination, chunks[3]);
+
+    let mut footer =
+        String::from("Tab moves focus · Up/Down chooses space · Enter creates · Esc cancels");
+    if let Some(error) = &state.error {
+        footer = format!("{footer}\nError: {error}");
+    }
+    let footer = Paragraph::new(footer)
+        .style(Style::default().fg(if state.error.is_some() {
+            Color::LightRed
+        } else {
+            Color::DarkGray
+        }))
+        .wrap(Wrap { trim: false });
+    f.render_widget(footer, chunks[4]);
+
+    match state.focus {
+        NewNoteFocus::Title => {
+            f.set_cursor_position((chunks[0].x + state.title.len() as u16 + 1, chunks[0].y + 1));
+        }
+        NewNoteFocus::Path => {
+            f.set_cursor_position((chunks[1].x + state.path.len() as u16 + 1, chunks[1].y + 1));
+        }
+        NewNoteFocus::Space => {}
+    }
 }
 
 // ─── Editor drawing ────────────────────────────────────────────────
@@ -1582,23 +2109,32 @@ MALD Keyboard Shortcuts
   Navigation
     Tab / Shift+Tab     Cycle views
     1-5                 Jump to Home/Search/Browse/Tasks/Edit
+    n                   Create a note with space + folder selection
+    s                   Switch spaces with a ranked picker
+    /                   Jump into search from Home or Tasks
     ?                   Toggle this help
-    q / Esc             Quit (except in editor)
+    Esc                 Go back home
+    q                   Quit MALD
 
   Search
     Type to search      Start typing to filter notes
     Up / Down           Navigate results
-    Enter               Open in editor (Edit tab)
+    Enter               Open in editor
+    Esc                 Clear or return home
 
   Browse
+    n                   Create a note without leaving the TUI
     Up / Down           Navigate files
-    Enter               Open in editor (Edit tab)
+    Enter               Open in editor
     /                   Filter by filename
     d                   Move selected file to trash
+    Esc                 Return home
 
   Tasks
+    n                   Create a note for follow-up work
     Up / Down           Navigate tasks
     Enter               Open the note containing the task
+    /                   Jump straight into search
 
   Editor
     Type                Insert text at cursor
@@ -1606,15 +2142,17 @@ MALD Keyboard Shortcuts
     Arrow keys          Move cursor
     Home / End          Start / end of line
     Ctrl+S              Save file
-    Ctrl+Q              Close editor (back to Home)
+    Ctrl+Q              Close editor (asks before discard)
     Ctrl+E              Open in external editor ($EDITOR)
     Tab (in autocomplete)  Accept suggestion
     Esc (in autocomplete)  Cancel
 
   Muscle Memory (CLI)
-    mald                Open today's daily note
+    mald / mald gui     Open the desktop app
+    mald launch         Pick a space and open MALD there
     mald <text>         Smart search and open
-    mald hub            Open this TUI
+    mald tui            Open this TUI
+    mald today          Open today's daily note
     mald q <text>       Quick capture
     mald f <query>      Find and open
 ";

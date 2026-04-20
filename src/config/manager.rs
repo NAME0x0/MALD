@@ -5,6 +5,14 @@ use std::path::{Path, PathBuf};
 
 const CURRENT_CONFIG_VERSION: u64 = 2;
 
+fn default_editor() -> &'static str {
+    if cfg!(windows) {
+        "code"
+    } else {
+        "nvim"
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Typed configuration structs (read-only, deserialized from the same JSON)
 // ---------------------------------------------------------------------------
@@ -64,7 +72,7 @@ impl Default for TypedConfig {
     fn default() -> Self {
         Self {
             config_version: CURRENT_CONFIG_VERSION,
-            editor: "nvim".into(),
+            editor: default_editor().into(),
             default_kb: "personal".into(),
             ai: AiConfig::default(),
             daemon: DaemonConfig::default(),
@@ -113,14 +121,109 @@ impl Default for SessionConfig {
 /// Returns `(ConfigManager, TypedConfig, kb_name, kb_path)`.
 /// The KB path is **not** validated for existence -- callers should check if needed.
 pub fn resolve_kb(kb: Option<&str>) -> Result<(ConfigManager, TypedConfig, String, PathBuf)> {
-    let config_path = crate::fs::mald_home().join("config").join("config.json");
+    let home = crate::fs::mald_home();
+    let config_path = home.join("config").join("config.json");
     let config = ConfigManager::load(&config_path)?;
     let typed = config.typed();
-    let kb_name = kb
+    let kb_root = home.join("kb");
+    let available = list_kb_names(&kb_root);
+    let requested = kb
         .map(String::from)
         .unwrap_or_else(|| typed.default_kb.clone());
-    let kb_path = crate::fs::mald_home().join("kb").join(&kb_name);
+    let requested_path = kb_root.join(&requested);
+
+    let kb_name = if requested_path.exists() {
+        requested
+    } else {
+        let exact = available
+            .iter()
+            .find(|name| name.eq_ignore_ascii_case(&requested))
+            .cloned();
+
+        if let Some(exact) = exact {
+            exact
+        } else if let Some(best) = fuzzy_resolve_kb_name(&available, &requested) {
+            best
+        } else if kb.is_none() {
+            available.into_iter().next().unwrap_or(requested)
+        } else {
+            requested
+        }
+    };
+    let kb_path = kb_root.join(&kb_name);
     Ok((config, typed, kb_name, kb_path))
+}
+
+fn fuzzy_resolve_kb_name(available: &[String], requested: &str) -> Option<String> {
+    let requested = requested.trim();
+    if requested.is_empty() {
+        return None;
+    }
+
+    let requested_lower = requested.to_ascii_lowercase();
+    let requested_norm = normalize_kb_name(requested);
+    let tokens: Vec<&str> = requested_norm
+        .split_whitespace()
+        .filter(|token| !token.is_empty())
+        .collect();
+
+    let mut matches: Vec<(i32, &String)> = available
+        .iter()
+        .filter_map(|name| {
+            let lower = name.to_ascii_lowercase();
+            let normalized = normalize_kb_name(name);
+
+            let score = if lower == requested_lower || normalized == requested_norm {
+                500
+            } else if lower.starts_with(&requested_lower) || normalized.starts_with(&requested_norm)
+            {
+                350
+            } else if !tokens.is_empty() && tokens.iter().all(|token| normalized.contains(token)) {
+                250
+            } else if lower.contains(&requested_lower) || normalized.contains(&requested_norm) {
+                200
+            } else {
+                return None;
+            };
+
+            Some((score, name))
+        })
+        .collect();
+
+    matches.sort_by(|a, b| {
+        b.0.cmp(&a.0)
+            .then_with(|| a.1.len().cmp(&b.1.len()))
+            .then_with(|| a.1.cmp(b.1))
+    });
+
+    matches.into_iter().next().map(|(_, name)| name.clone())
+}
+
+fn normalize_kb_name(value: &str) -> String {
+    value
+        .chars()
+        .map(|ch| match ch {
+            '-' | '_' | '/' | '\\' => ' ',
+            _ => ch.to_ascii_lowercase(),
+        })
+        .collect()
+}
+
+pub fn list_kb_names(kb_root: &Path) -> Vec<String> {
+    let mut names: Vec<String> = std::fs::read_dir(kb_root)
+        .into_iter()
+        .flatten()
+        .filter_map(|entry| entry.ok())
+        .filter_map(|entry| {
+            entry
+                .file_type()
+                .ok()
+                .filter(|ft| ft.is_dir())
+                .map(|_| entry.file_name().to_string_lossy().to_string())
+        })
+        .collect();
+    names.sort();
+    names
 }
 
 /// Load config and return both the mutable manager and the typed snapshot.
@@ -271,7 +374,7 @@ impl ConfigManager {
     pub fn default_config() -> Value {
         serde_json::json!({
             "config_version": CURRENT_CONFIG_VERSION,
-            "editor": "nvim",
+            "editor": default_editor(),
             "default_kb": "personal",
             "ai": {
                 "backend": "ollama",
@@ -315,7 +418,7 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let path = dir.path().join("config.json");
         let config = ConfigManager::load(&path).unwrap();
-        assert_eq!(config.get_string("editor").unwrap(), "nvim");
+        assert_eq!(config.get_string("editor").unwrap(), default_editor());
         assert_eq!(config.get_string("ai.backend").unwrap(), "ollama");
     }
 
@@ -423,7 +526,7 @@ mod tests {
         let typed = config.typed();
 
         assert_eq!(typed.config_version, 2);
-        assert_eq!(typed.editor, "nvim");
+        assert_eq!(typed.editor, default_editor());
         assert_eq!(typed.default_kb, "personal");
         assert_eq!(typed.ai.backend, "ollama");
         assert_eq!(typed.ai.default_model, "llama3.2");
@@ -484,7 +587,7 @@ mod tests {
     #[test]
     fn test_typed_from_empty_json_uses_defaults() {
         let typed: TypedConfig = serde_json::from_str("{}").unwrap();
-        assert_eq!(typed.editor, "nvim");
+        assert_eq!(typed.editor, default_editor());
         assert_eq!(typed.ai.default_model, "llama3.2");
         assert_eq!(typed.daemon.port, 7433);
     }
@@ -494,8 +597,8 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let path = dir.path().join("config.json");
         let (mgr, typed) = load_typed(&path).unwrap();
-        assert_eq!(mgr.get_string("editor").unwrap(), "nvim");
-        assert_eq!(typed.editor, "nvim");
+        assert_eq!(mgr.get_string("editor").unwrap(), default_editor());
+        assert_eq!(typed.editor, default_editor());
         assert_eq!(typed.ai.backend, "ollama");
     }
 }

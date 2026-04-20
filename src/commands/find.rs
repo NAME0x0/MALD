@@ -57,14 +57,14 @@ pub async fn run(query: Vec<String>, _kb: Option<&str>) -> Result<()> {
     if results.is_empty() {
         return Err(crate::errors::bail_ctx(
             format!("No results for: {joined}"),
-            "Try broader terms or run `mald kb list` to see available KBs",
+            "Try broader terms or run `mald kb list` to see available spaces",
         ));
     }
 
     // Single result → open directly
     if results.len() == 1 {
         let path = &results[0].path;
-        std::process::Command::new(&editor).arg(path).status()?;
+        crate::commands::launch::open_in_editor(&editor, path)?;
         return Ok(());
     }
 
@@ -94,15 +94,13 @@ pub async fn run(query: Vec<String>, _kb: Option<&str>) -> Result<()> {
         if idx >= show {
             bail!("Invalid selection");
         }
-        std::process::Command::new(&editor)
-            .arg(&results[idx].path)
-            .status()?;
+        crate::commands::launch::open_in_editor(&editor, &results[idx].path)?;
     }
 
     Ok(())
 }
 
-/// Interactive fzf over all notes in all KBs.
+/// Interactive fzf over all notes in all spaces.
 fn fzf_interactive(editor: &str) -> Result<()> {
     let kb_dir = mald_home().join("kb");
     let files = crate::fs::find_files(&kb_dir, "md")?;
@@ -115,7 +113,7 @@ fn fzf_interactive(editor: &str) -> Result<()> {
 
     let output = run_fzf(&input, editor)?;
     if let Some(path) = output {
-        std::process::Command::new(editor).arg(&path).status()?;
+        crate::commands::launch::open_in_editor(editor, &path)?;
     }
     Ok(())
 }
@@ -142,7 +140,7 @@ fn fzf_select(results: &[crate::index::metadata::FtsResult], editor: &str) -> Re
     let output = run_fzf_with_columns(&input)?;
     if let Some(line) = output {
         let path = line.split('\t').next().unwrap_or(&line);
-        std::process::Command::new(editor).arg(path).status()?;
+        crate::commands::launch::open_in_editor(editor, path)?;
     }
     Ok(())
 }

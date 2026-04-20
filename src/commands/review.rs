@@ -6,7 +6,7 @@ pub async fn run(kb: Option<&str>, days: u64) -> Result<()> {
     let (_config, _typed, kb_name, kb_path) = crate::config::resolve_kb(kb)?;
 
     if !kb_path.exists() {
-        println!("Knowledge base '{kb_name}' not found.");
+        println!("Space '{kb_name}' not found.");
         return Ok(());
     }
 

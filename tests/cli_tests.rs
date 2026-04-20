@@ -69,7 +69,7 @@ fn test_cli_kb_create_and_list() {
         .args(["kb", "create", "work"])
         .assert()
         .success()
-        .stdout(predicate::str::contains("Created knowledge base: work"));
+        .stdout(predicate::str::contains("Created space: work"));
 
     mald_cmd_with_home(dir.path())
         .args(["kb", "list"])
@@ -87,11 +87,12 @@ fn test_cli_config_get() {
         .assert()
         .success();
 
+    let expected_editor = if cfg!(windows) { "code" } else { "nvim" };
     mald_cmd_with_home(dir.path())
         .args(["config", "get", "editor"])
         .assert()
         .success()
-        .stdout(predicate::str::contains("nvim"));
+        .stdout(predicate::str::contains(expected_editor));
 }
 
 #[test]
@@ -123,7 +124,7 @@ fn test_cli_search_with_query() {
         .success();
 
     mald_cmd_with_home(dir.path())
-        .args(["search", "knowledge"])
+        .args(["search", "amber"])
         .assert()
         .success()
         .stdout(predicate::str::contains("Results for"));
@@ -145,7 +146,20 @@ fn test_cli_orphans() {
 
 #[test]
 fn test_cli_unknown_subcommand() {
-    cargo_bin_cmd!("mald").arg("nonexistent").assert().failure();
+    cargo_bin_cmd!("mald")
+        .args(["kb", "nonexistent"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("mald kb list"));
+}
+
+#[test]
+fn test_cli_setup_ai_hint() {
+    cargo_bin_cmd!("mald")
+        .args(["setup", "ai"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("mald ai setup"));
 }
 
 #[test]
@@ -165,4 +179,59 @@ fn test_cli_daemon_status() {
         stdout.contains("not running") || stdout.contains("Daemon is running"),
         "Unexpected daemon status output: {stdout}"
     );
+}
+
+#[test]
+fn test_cli_kb_current_and_use() {
+    let dir = TempDir::new().unwrap();
+    mald_cmd_with_home(dir.path())
+        .arg("init")
+        .assert()
+        .success();
+
+    mald_cmd_with_home(dir.path())
+        .args(["kb", "create", "work"])
+        .assert()
+        .success();
+
+    mald_cmd_with_home(dir.path())
+        .args(["space", "use", "work"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Default space set to: work"));
+
+    mald_cmd_with_home(dir.path())
+        .args(["space", "current"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Current space: work"));
+}
+
+#[test]
+fn test_cli_kb_use_accepts_multiword_space_without_quotes() {
+    let dir = TempDir::new().unwrap();
+    mald_cmd_with_home(dir.path())
+        .arg("init")
+        .assert()
+        .success();
+
+    mald_cmd_with_home(dir.path())
+        .args(["kb", "create", "client", "acme", "prod"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Created space: client acme prod"));
+
+    mald_cmd_with_home(dir.path())
+        .args(["kb", "use", "client", "acme"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Default space set to: client acme prod",
+        ));
+
+    mald_cmd_with_home(dir.path())
+        .args(["kb", "current"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Current space: client acme prod"));
 }

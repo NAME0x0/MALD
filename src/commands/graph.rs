@@ -5,7 +5,7 @@ use crate::parser::graph;
 fn resolve_kb_path(kb: Option<&str>) -> Result<std::path::PathBuf> {
     let (_config, _typed, kb_name, kb_path) = crate::config::resolve_kb(kb)?;
     if !kb_path.exists() {
-        bail!("Knowledge base '{kb_name}' not found");
+        bail!("Space '{kb_name}' not found");
     }
     Ok(kb_path)
 }
@@ -46,7 +46,7 @@ pub async fn links(note: &str, kb: Option<&str>) -> Result<()> {
             }
         }
         None => {
-            bail!("Note '{note}' not found in knowledge base");
+            bail!("Note '{note}' not found in space");
         }
     }
     Ok(())

@@ -157,12 +157,12 @@ pub async fn prepare_rag_chat(
 
     let system_prompt = if context.is_empty() {
         format!(
-            "You are a helpful assistant for the knowledge base '{kb_name}'. \
+            "You are a helpful assistant for the space '{kb_name}'. \
              Answer questions directly and concisely."
         )
     } else {
         format!(
-            "You are a helpful assistant for the knowledge base '{kb_name}'. \
+            "You are a helpful assistant for the space '{kb_name}'. \
              Answer using ONLY the following sources. Cite sources using [1], [2], etc. \
              If the sources don't contain the answer, say so.\n\n{context}"
         )

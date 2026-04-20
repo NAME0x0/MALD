@@ -13,8 +13,15 @@ pub async fn run() -> Result<()> {
         println!("Welcome to MALD — Markdown Archive & Localized Daemon\n");
         println!("Get started:");
         println!("  mald init              # Create ~/.mald/ structure");
-        println!("  mald kb create work    # Create a knowledge base");
+        println!("  mald kb create work    # Create a space");
         println!("  mald new \"First Note\"  # Create your first note");
+        println!("  mald gui               # Open the desktop app");
+        println!("  mald launch            # Pick a space and open MALD there");
+        println!("  mald tui               # Open the terminal UI");
+        println!("  mald setup editor      # Pick VS Code, Neovim, or another editor");
+        if cfg!(windows) {
+            println!("  mald setup path        # Make `mald` work in new terminals");
+        }
         return Ok(());
     }
 
@@ -30,7 +37,7 @@ pub async fn run() -> Result<()> {
         Local::now().format("%A, %B %d, %Y")
     );
 
-    // KB stats
+    // Space stats
     let kb_dir = home.join("kb");
     let mut total_notes = 0usize;
     let mut kb_names = Vec::new();
@@ -50,11 +57,11 @@ pub async fn run() -> Result<()> {
     }
 
     if kb_names.is_empty() {
-        println!("  No knowledge bases. Run `mald kb create <name>`.\n");
+        println!("  No spaces yet. Run `mald kb create <name>`.\n");
         return Ok(());
     }
 
-    println!("Knowledge bases:");
+    println!("Spaces:");
     for (name, count) in &kb_names {
         let marker = if *name == default_kb { " *" } else { "" };
         println!("  {name:20} {count:>4} notes{marker}");
@@ -148,9 +155,16 @@ pub async fn run() -> Result<()> {
 
     // Always show quick actions
     println!("Quick actions:");
+    println!("  mald                 # Open the desktop app");
+    println!("  mald launch          # Pick a space and open MALD there");
+    println!("  mald tui             # Open the terminal UI");
     println!("  mald q \"thought\"      # Quick capture");
     println!("  mald today            # Open daily note");
     println!("  mald search           # Interactive search");
+    println!("  mald setup editor     # Switch editors without typing paths");
+    if cfg!(windows) {
+        println!("  mald setup path       # Add MALD to PATH for future terminals");
+    }
 
     Ok(())
 }

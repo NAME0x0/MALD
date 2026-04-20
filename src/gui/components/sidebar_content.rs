@@ -26,6 +26,9 @@ pub struct SidebarData<'a> {
     pub ai_messages: &'a [(String, String)],
     pub ai_input: &'a str,
     pub settings: &'a GuiSettingsForm,
+    pub known_kbs: &'a [String],
+    pub detected_editors: &'a [crate::commands::launch::DetectedEditor],
+    pub mald_shell_available: bool,
     pub theme: iced::Theme,
     pub modified_paths: HashSet<PathBuf>,
 }
@@ -42,6 +45,9 @@ pub fn view<'a>(data: SidebarData<'a>) -> Element<'a, Message> {
         ai_messages,
         ai_input,
         settings,
+        known_kbs,
+        detected_editors,
+        mald_shell_available,
         theme,
         modified_paths,
     } = data;
@@ -96,7 +102,13 @@ pub fn view<'a>(data: SidebarData<'a>) -> Element<'a, Message> {
         ActivityMode::Graph => view_graph(graph_nodes, &theme),
         ActivityMode::Tasks => view_tasks(tasks, &theme),
         ActivityMode::AI => view_ai(ai_messages, ai_input, &theme),
-        ActivityMode::Settings => view_settings(settings, &theme),
+        ActivityMode::Settings => view_settings(
+            settings,
+            known_kbs,
+            detected_editors,
+            mald_shell_available,
+            &theme,
+        ),
     };
 
     let inner = column![header, content].spacing(0);
@@ -667,7 +679,32 @@ fn parse_sidebar_ai_citation(line: &str) -> Option<SidebarAiCitation> {
 // Settings view
 // ─────────────────────────────────────────────────────────────────────────────
 
-fn view_settings<'a>(settings: &'a GuiSettingsForm, theme: &iced::Theme) -> Element<'a, Message> {
+fn settings_card<'a>(
+    content: impl Into<Element<'a, Message>>,
+    surface: iced::Color,
+    surface_border: iced::Color,
+) -> Element<'a, Message> {
+    container(content)
+        .padding(spacing::MD as u16)
+        .style(move |_theme| container::Style {
+            background: Some(iced::Background::Color(surface)),
+            border: iced::Border {
+                color: surface_border,
+                width: 1.0,
+                radius: 16.0.into(),
+            },
+            ..Default::default()
+        })
+        .into()
+}
+
+fn view_settings<'a>(
+    settings: &'a GuiSettingsForm,
+    known_kbs: &'a [String],
+    detected_editors: &'a [crate::commands::launch::DetectedEditor],
+    mald_shell_available: bool,
+    theme: &iced::Theme,
+) -> Element<'a, Message> {
     let text_color = themed(theme, colors::TEXT, colors::latte::TEXT);
     let sub_color = themed(theme, colors::SUBTEXT0, colors::latte::SUBTEXT0);
     let accent = themed(theme, colors::LAVENDER, colors::latte::LAVENDER);
@@ -697,6 +734,70 @@ fn view_settings<'a>(settings: &'a GuiSettingsForm, theme: &iced::Theme) -> Elem
         .spacing(spacing::XS)
     };
 
+    let editor_quick_actions: Element<Message> = if detected_editors.is_empty() {
+        text("No common editors detected yet. You can still type a command manually.")
+            .size(type_scale::CAPTION)
+            .color(sub_color)
+            .into()
+    } else {
+        let editor_buttons = detected_editors.iter().take(3).fold(
+            row![].spacing(spacing::XS).align_y(Alignment::Center),
+            |row, editor| {
+                row.push(
+                    button(text(format!("Use {}", editor.label)).size(type_scale::CAPTION))
+                        .on_press(Message::SettingChanged(
+                            "editor".into(),
+                            editor.command.clone(),
+                        ))
+                        .padding([spacing::XS as u16, spacing::SM as u16])
+                        .style(theme::secondary_button_style),
+                )
+            },
+        );
+
+        column![
+            text("Detected editors")
+                .size(type_scale::CAPTION)
+                .color(sub_color),
+            editor_buttons,
+        ]
+        .spacing(spacing::XS)
+        .into()
+    };
+
+    let space_quick_actions: Element<Message> = if known_kbs.is_empty() {
+        text("No spaces found yet. Load the demo space or create one from the launcher.")
+            .size(type_scale::CAPTION)
+            .color(sub_color)
+            .into()
+    } else {
+        let space_buttons = known_kbs.iter().take(6).fold(
+            row![].spacing(spacing::XS).align_y(Alignment::Center),
+            |row, kb| {
+                let is_active = settings.default_kb == *kb;
+                row.push(
+                    button(
+                        text(kb.clone())
+                            .size(type_scale::CAPTION)
+                            .color(if is_active { accent } else { text_color }),
+                    )
+                    .on_press(Message::CurrentKbSwitch(kb.clone()))
+                    .padding([spacing::XS as u16, spacing::SM as u16])
+                    .style(theme::ghost_button_style(is_active)),
+                )
+            },
+        );
+
+        column![
+            text("Switch active space")
+                .size(type_scale::CAPTION)
+                .color(sub_color),
+            space_buttons,
+        ]
+        .spacing(spacing::XS)
+        .into()
+    };
+
     let daemon_label = if settings.daemon_auto_start {
         "Auto-start daemon: On"
     } else {
@@ -708,35 +809,103 @@ fn view_settings<'a>(settings: &'a GuiSettingsForm, theme: &iced::Theme) -> Elem
         sub_color
     };
 
+    let runtime_actions = row![
+        button(text("Save").size(type_scale::UI))
+            .on_press_maybe((!settings.saving && settings.dirty).then_some(Message::SettingsSave))
+            .padding([spacing::SM as u16, spacing::LG as u16])
+            .style(theme::primary_button_style),
+        button(text("Reload").size(type_scale::UI))
+            .on_press_maybe((!settings.saving).then_some(Message::SettingsReset))
+            .padding([spacing::SM as u16, spacing::LG as u16])
+            .style(theme::secondary_button_style),
+        button(text("Theme").size(type_scale::UI))
+            .on_press(Message::ThemeToggle)
+            .padding([spacing::SM as u16, spacing::LG as u16])
+            .style(theme::secondary_button_style),
+    ]
+    .spacing(spacing::SM);
+
+    #[cfg(windows)]
+    let path_button: Option<Element<Message>> = (!mald_shell_available).then(|| {
+        button(text("Add MALD to PATH").size(type_scale::UI))
+            .on_press(Message::PathSetupRun)
+            .padding([spacing::SM as u16, spacing::LG as u16])
+            .style(theme::secondary_button_style)
+            .into()
+    });
+
+    #[cfg(not(windows))]
+    let path_button: Option<Element<Message>> = None;
+
     let cards: Vec<Element<Message>> = vec![
-        container(
+        settings_card(
             column![
                 row![
-                    text("Workspace").size(type_scale::BODY).color(text_color),
+                    text("Settings").size(type_scale::BODY).color(text_color),
                     Space::new().width(Length::Fill),
                     status_text,
                 ]
                 .align_y(Alignment::Center),
-                field("Default KB", "personal", "default_kb", &settings.default_kb),
-                field("Editor", "nvim", "editor", &settings.editor),
-                field("Shell", "powershell", "session.shell", &settings.shell),
+                text("Change the working space, editor, and runtime behavior without touching config files.")
+                    .size(type_scale::CAPTION)
+                    .color(sub_color),
+                runtime_actions,
+                if let Some(path_button) = path_button {
+                    path_button
+                } else {
+                    Space::new().height(Length::Shrink).into()
+                },
             ]
             .spacing(spacing::SM),
-        )
-        .padding(spacing::SM as u16)
-        .style(move |_theme| container::Style {
-            background: Some(iced::Background::Color(surface)),
-            border: iced::Border {
-                color: surface_border,
-                width: 1.0,
-                radius: 14.0.into(),
-            },
-            ..Default::default()
-        })
-        .into(),
-        container(
+            surface,
+            surface_border,
+        ),
+        settings_card(
+            column![
+                row![
+                    text("Working space").size(type_scale::BODY).color(text_color),
+                    Space::new().width(Length::Fill),
+                    text(format!("Active: {}", settings.default_kb))
+                        .size(type_scale::CAPTION)
+                        .color(accent),
+                ]
+                .align_y(Alignment::Center),
+                text("Switch where search, graph, AI, and new notes should work right now.")
+                    .size(type_scale::CAPTION)
+                    .color(sub_color),
+                space_quick_actions,
+            ]
+            .spacing(spacing::SM),
+            surface,
+            surface_border,
+        ),
+        settings_card(
+            column![
+                text("Editor & shell").size(type_scale::BODY).color(text_color),
+                text("Pick the command MALD should use when opening notes or folders.")
+                    .size(type_scale::CAPTION)
+                    .color(sub_color),
+                field("Editor", "nvim", "editor", &settings.editor),
+                editor_quick_actions,
+                field("Shell", "powershell", "session.shell", &settings.shell),
+                text(if mald_shell_available {
+                    "MALD command is ready in new terminals."
+                } else {
+                    "MALD command is not on PATH yet."
+                })
+                .size(type_scale::CAPTION)
+                .color(if mald_shell_available { green } else { yellow }),
+            ]
+            .spacing(spacing::SM),
+            surface,
+            surface_border,
+        ),
+        settings_card(
             column![
                 text("AI backend").size(type_scale::BODY).color(text_color),
+                text("These values stay local. MALD uses them when you ask AI to work against your active space.")
+                    .size(type_scale::CAPTION)
+                    .color(sub_color),
                 field("Model", "llama3.2", "ai.default_model", &settings.ai_model),
                 field(
                     "Ollama URL",
@@ -752,56 +921,27 @@ fn view_settings<'a>(settings: &'a GuiSettingsForm, theme: &iced::Theme) -> Elem
                 ),
             ]
             .spacing(spacing::SM),
-        )
-        .padding(spacing::SM as u16)
-        .style(move |_theme| container::Style {
-            background: Some(iced::Background::Color(surface)),
-            border: iced::Border {
-                color: surface_border,
-                width: 1.0,
-                radius: 14.0.into(),
-            },
-            ..Default::default()
-        })
-        .into(),
-        container(
+            surface,
+            surface_border,
+        ),
+        settings_card(
             column![
-                text("Runtime").size(type_scale::BODY).color(text_color),
+                text("Background service").size(type_scale::BODY).color(text_color),
+                text("Keep indexing and automation ready in the background if you want faster follow-up actions.")
+                    .size(type_scale::CAPTION)
+                    .color(sub_color),
                 button(text(daemon_label).size(type_scale::UI).color(daemon_color))
                     .on_press(Message::SettingToggle("daemon.auto_start".into()))
                     .padding([spacing::SM as u16, spacing::MD as u16])
                     .style(theme::list_item_style(false)),
-                row![
-                    button(text("Save").size(type_scale::UI))
-                        .on_press_maybe(
-                            (!settings.saving && settings.dirty).then_some(Message::SettingsSave)
-                        )
-                        .padding([spacing::SM as u16, spacing::LG as u16])
-                        .style(theme::primary_button_style),
-                    button(text("Reload").size(type_scale::UI))
-                        .on_press_maybe((!settings.saving).then_some(Message::SettingsReset))
-                        .padding([spacing::SM as u16, spacing::LG as u16])
-                        .style(theme::secondary_button_style),
-                    button(text("Theme").size(type_scale::UI))
-                        .on_press(Message::ThemeToggle)
-                        .padding([spacing::SM as u16, spacing::LG as u16])
-                        .style(theme::secondary_button_style),
-                ]
-                .spacing(spacing::SM),
+                text("If new terminals still cannot find `mald`, run the PATH helper once.")
+                    .size(type_scale::CAPTION)
+                    .color(sub_color),
             ]
             .spacing(spacing::SM),
-        )
-        .padding(spacing::SM as u16)
-        .style(move |_theme| container::Style {
-            background: Some(iced::Background::Color(surface)),
-            border: iced::Border {
-                color: surface_border,
-                width: 1.0,
-                radius: 14.0.into(),
-            },
-            ..Default::default()
-        })
-        .into(),
+            surface,
+            surface_border,
+        ),
     ];
 
     scrollable(

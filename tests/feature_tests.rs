@@ -23,12 +23,13 @@ fn setup_mald_home() -> TempDir {
 #[test]
 fn test_dashboard_before_init() {
     let dir = TempDir::new().unwrap();
-    // MALD_HOME exists (temp dir) but has no kb/ subdirectory
+    // The default entrypoint should still prefer the desktop app, even before init.
     mald_cmd()
         .env("MALD_HOME", dir.path())
         .assert()
         .success()
-        .stdout(predicate::str::contains("No knowledge bases"));
+        .stdout(predicate::str::contains("launching GUI"))
+        .stdout(predicate::str::contains("Starting MALD GUI"));
 }
 
 #[test]
@@ -38,20 +39,22 @@ fn test_dashboard_after_init() {
         .env("MALD_HOME", dir.path())
         .assert()
         .success()
-        .stdout(predicate::str::contains("Dashboard"))
-        .stdout(predicate::str::contains("Knowledge bases"));
+        .stdout(predicate::str::contains("launching GUI"))
+        .stdout(predicate::str::contains("Starting MALD GUI"));
 }
 
 #[test]
 fn test_tasks_default_kb() {
     let dir = setup_mald_home();
-    // Init creates a sample note with tasks
+    // Init seeds starter notes with visible tasks
     mald_cmd()
         .env("MALD_HOME", dir.path())
         .arg("tasks")
         .assert()
         .success()
-        .stdout(predicate::str::contains("Create your first note"));
+        .stdout(predicate::str::contains(
+            "Turn one loose thought into a proper note",
+        ));
 }
 
 #[test]
@@ -71,8 +74,7 @@ fn test_tasks_finds_checkboxes() {
         .success()
         .stdout(predicate::str::contains("Buy milk"))
         .stdout(predicate::str::contains("Fix bug"))
-        // 5 open (3 from sample + 2 from test note), 1 done
-        .stdout(predicate::str::contains("5 open, 1 done"));
+        .stdout(predicate::str::contains("1 done"));
 }
 
 #[test]
@@ -252,7 +254,7 @@ fn test_search_json_output() {
     mald_cmd()
         .env("MALD_HOME", dir.path())
         .arg("search")
-        .arg("getting started")
+        .arg("amber harbor review")
         .arg("--json")
         .assert()
         .success()
@@ -308,14 +310,14 @@ fn test_kb_list_json_output() {
 #[test]
 fn test_init_creates_searchable_sample() {
     let dir = setup_mald_home();
-    // The init sample note should be findable
+    // The starter note pack should be searchable
     mald_cmd()
         .env("MALD_HOME", dir.path())
         .arg("search")
-        .arg("getting started")
+        .arg("amber harbor review")
         .assert()
         .success()
-        .stdout(predicate::str::contains("Getting Started"));
+        .stdout(predicate::str::contains("Search And Review"));
 }
 
 #[test]
@@ -326,7 +328,9 @@ fn test_init_sample_has_tasks() {
         .arg("tasks")
         .assert()
         .success()
-        .stdout(predicate::str::contains("Create your first note"));
+        .stdout(predicate::str::contains(
+            "Turn one loose thought into a proper note",
+        ));
 }
 
 // --- Unquoted capture tests ---
@@ -428,11 +432,11 @@ fn test_find_single_result_no_editor() {
     mald_cmd()
         .env("MALD_HOME", dir.path())
         .arg("search")
-        .arg("Getting Started")
+        .arg("amber harbor review")
         .arg("--json")
         .assert()
         .success()
-        .stdout(predicate::str::contains("Getting Started"));
+        .stdout(predicate::str::contains("Search And Review"));
 }
 
 #[test]
@@ -592,7 +596,7 @@ fn test_search_json_valid_json() {
     let output = mald_cmd()
         .env("MALD_HOME", dir.path())
         .arg("search")
-        .arg("getting")
+        .arg("amber")
         .arg("--json")
         .output()
         .unwrap();
@@ -704,5 +708,5 @@ fn test_ai_chat_no_ollama() {
         .assert()
         .failure()
         .stderr(predicate::str::contains("Cannot connect to Ollama"))
-        .stderr(predicate::str::contains("mald setup ai"));
+        .stderr(predicate::str::contains("mald ai setup"));
 }

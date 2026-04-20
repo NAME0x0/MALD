@@ -2,12 +2,12 @@ use anyhow::{bail, Result};
 
 use crate::fs::{mald_home, slugify};
 
-/// Rename a note and update all wikilink references across the KB.
+/// Rename a note and update all wikilink references across the active space.
 pub async fn run(old_name: &str, new_name: &str, kb: Option<&str>) -> Result<()> {
     let (_config, _typed, kb_name, kb_path) = crate::config::resolve_kb(kb)?;
 
     if !kb_path.exists() {
-        bail!("Knowledge base '{kb_name}' not found");
+        bail!("Space '{kb_name}' not found");
     }
 
     let files = crate::fs::find_files(&kb_path, "md")?;
@@ -22,7 +22,7 @@ pub async fn run(old_name: &str, new_name: &str, kb: Option<&str>) -> Result<()>
 
     let source_file = match source_file {
         Some(f) => f.clone(),
-        None => bail!("Note '{old_name}' not found in KB '{kb_name}'"),
+        None => bail!("Note '{old_name}' not found in space '{kb_name}'"),
     };
 
     // Build the new filename, preserving date prefix if present

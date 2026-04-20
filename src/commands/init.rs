@@ -3,37 +3,6 @@ use anyhow::Result;
 use crate::config::ConfigManager;
 use crate::fs::{ensure_directory, mald_home};
 
-const DEFAULT_KB_INDEX: &str = r#"---
-title: Getting Started
-created: 2024-01-01
-tags: [mald, guide]
----
-
-# Getting Started with MALD
-
-Welcome to your knowledge base. Here are the essentials:
-
-## Core Workflow
-
-- Create notes: `mald new "Title"`
-- Quick capture: `mald q "thought"`
-- Search: `mald search "query"`
-- Daily note: `mald today`
-
-## Connecting Ideas
-
-Link notes with [[wikilinks]] and organize with #hashtags.
-
-- [[inbox]] — capture fleeting thoughts
-- [[projects]] — active project notes
-
-## Tasks
-
-- [ ] Create your first note with `mald new "My First Note"`
-- [ ] Try quick capture: `mald q "hello world"`
-- [ ] Search your notes: `mald search "getting started"`
-"#;
-
 pub async fn run() -> Result<()> {
     let home = mald_home();
 
@@ -58,9 +27,17 @@ pub async fn run() -> Result<()> {
         config.save()?;
     }
 
-    let index_path = home.join("kb").join("personal").join("index.md");
-    if !index_path.exists() {
-        std::fs::write(&index_path, DEFAULT_KB_INDEX)?;
+    let config = ConfigManager::load(&config_path)?;
+    let default_kb = config.typed().default_kb;
+    let kb_root = home.join("kb");
+    let existing_kbs = crate::config::manager::list_kb_names(&kb_root);
+    let seed_kb = existing_kbs.first().cloned().unwrap_or(default_kb);
+
+    ensure_directory(&kb_root.join(&seed_kb))?;
+    let seed_kb_path = kb_root.join(&seed_kb);
+    let existing_notes = crate::fs::find_files(&seed_kb_path, "md")?;
+    if existing_notes.is_empty() {
+        crate::commands::starter::seed_starter_space(&seed_kb_path, &seed_kb)?;
     }
 
     // Create default templates
@@ -73,20 +50,34 @@ pub async fn run() -> Result<()> {
     println!("MALD initialized at {}", home.display());
     println!("  Indexed {count} files");
     println!("\nNext steps:");
-    println!("  mald today          — open today's daily note");
+    println!("  mald                — open the desktop app");
+    println!("  mald gui            — force the desktop app explicitly");
+    println!("  mald tui            — open the terminal UI");
+    println!("  mald launch         — pick a space and open MALD there");
+    println!("  mald today          — open today's daily note in your editor");
     println!("  mald new \"Title\"    — create a new note");
+    println!("  mald kb list        — inspect available spaces");
     println!("  mald search         — interactive fuzzy search");
     println!("  mald q \"thought\"    — quick capture to daily note");
     println!("  mald setup          — guided setup (editor, AI, etc.)");
-    println!("  mald ai chat \"...\" — chat with your KB (needs Ollama)");
-    println!("  mald help <topic>   — learn about a feature (ai, search, sync, ...)");
+    println!("  mald setup editor   — pick VS Code, Neovim, or another editor");
+    println!("  mald setup path     — make the `mald` command work in new terminals");
+    println!("  mald ai chat \"...\" — chat with your active space (needs Ollama)");
+    println!("  mald help-topic ai  — learn about a feature in depth");
 
     // Suggest setup if editor isn't in PATH
-    let config = ConfigManager::load(&config_path)?;
     let editor = config.typed().editor.clone();
     let editor_missing = !crate::commands::doctor::which_exists_pub(&editor);
     if editor_missing {
-        println!("\nTip: '{editor}' not found in PATH. Run `mald setup` to configure your editor.");
+        println!(
+            "\nTip: '{editor}' is not launchable right now. Run `mald setup editor` to pick a detected editor."
+        );
+    }
+
+    if cfg!(windows) && !crate::commands::setup::mald_on_path() {
+        println!(
+            "Tip: `mald` is not on PATH for new terminals yet. Run `mald setup path` once to fix that."
+        );
     }
 
     Ok(())

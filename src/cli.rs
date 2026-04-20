@@ -1,12 +1,15 @@
-use clap::{CommandFactory, Parser, Subcommand};
+use clap::{error::ErrorKind, CommandFactory, Parser, Subcommand};
 use clap_complete::{generate, Shell};
+use crossterm::style::Stylize;
 
 #[derive(Parser)]
 #[command(
     name = "mald",
     about = "Markdown Archive & Localized Daemon — terminal-first PKM",
-    after_help = "Run `mald` with no args to open today's daily note.\n\
-                  Run `mald hub` for the interactive TUI.\n\
+    after_help = "Run `mald` to open the desktop app.\n\
+                  Run `mald gui` to force the desktop app.\n\
+                  Run `mald tui` for the interactive terminal UI.\n\
+                  Run `mald today` for your daily note.\n\
                   Run `mald <text>` to search and open a note.\n\n\
                   Shortcuts: q=capture, f=find, e=edit, s=search, n=new, t=today"
 )]
@@ -25,9 +28,33 @@ pub struct Cli {
 
 #[derive(Subcommand)]
 pub enum Command {
-    /// Interactive setup wizard
-    #[command(hide = true, after_help = "Examples:\n  mald setup")]
-    Setup,
+    /// Guided onboarding and setup helpers
+    #[command(
+        after_help = "Examples:\n  mald setup\n  mald setup editor\n  mald setup editor code\n  mald setup path"
+    )]
+    Setup {
+        #[command(subcommand)]
+        action: Option<SetupAction>,
+    },
+
+    /// Open the desktop app explicitly
+    #[command(
+        alias = "app",
+        visible_alias = "ui",
+        visible_alias = "desktop",
+        after_help = "Examples:\n  mald gui\n  mald ui\n  mald desktop"
+    )]
+    Gui,
+
+    /// Pick a space and launch MALD into it
+    #[command(
+        visible_alias = "go",
+        after_help = "Examples:\n  mald launch\n  mald launch work\n  mald launch client acme"
+    )]
+    Launch {
+        #[arg(trailing_var_arg = true)]
+        kb: Vec<String>,
+    },
 
     /// Initialize MALD directory structure
     #[command(after_help = "Examples:\n  mald init")]
@@ -36,7 +63,7 @@ pub enum Command {
     /// Create a new note
     #[command(
         alias = "n",
-        after_help = "Examples:\n  mald new \"Meeting Notes\"\n  mald new \"API Design\" --kb work\n  mald new \"Standup\" --template meeting"
+        after_help = "Examples:\n  mald new \"Meeting Notes\"\n  mald new \"API Design\" --kb work\n  mald new \"Standup\" --template meeting\n  mald new \"Incident\" --path projects/ops"
     )]
     New {
         title: String,
@@ -44,6 +71,12 @@ pub enum Command {
         kb: Option<String>,
         #[arg(short, long)]
         template: Option<String>,
+        #[arg(
+            long,
+            value_name = "DIR",
+            help = "Create the note inside a subdirectory of the active space"
+        )]
+        path: Option<String>,
     },
 
     /// Open today's daily note
@@ -104,7 +137,7 @@ pub enum Command {
         kb: Option<String>,
     },
 
-    /// Open the KB directory in your editor
+    /// Open the active space directory in your editor
     #[command(after_help = "Examples:\n  mald open\n  mald open --kb work")]
     Open {
         #[arg(short, long)]
@@ -119,13 +152,14 @@ pub enum Command {
         kb: Option<String>,
     },
 
-    /// Knowledge base management
+    /// Space management
+    #[command(visible_alias = "space", visible_alias = "spaces")]
     Kb {
         #[command(subcommand)]
         action: KbAction,
     },
 
-    /// Search notes (all KBs, no args = interactive TUI)
+    /// Search notes (all spaces, no args = interactive TUI)
     #[command(
         alias = "s",
         after_help = "Examples:\n  mald search \"rust async\"\n  mald search \"meeting\" --since 7d\n  mald search --json     # JSON output for scripts\n  mald search            # opens interactive TUI"
@@ -255,7 +289,7 @@ pub enum Command {
         flatten: bool,
     },
 
-    /// Serve KB as local website (with capture API)
+    /// Serve a space as a local website (with capture API)
     #[command(
         after_help = "Examples:\n  mald serve\n  mald serve --port 8080\n  mald serve --kb work"
     )]
@@ -378,8 +412,13 @@ pub enum Command {
     #[command(after_help = "Examples:\n  mald status")]
     Status,
 
-    /// Open the interactive TUI hub
-    #[command(alias = "h", after_help = "Examples:\n  mald hub")]
+    /// Open the interactive terminal UI
+    #[command(
+        name = "tui",
+        alias = "hub",
+        alias = "h",
+        after_help = "Examples:\n  mald tui\n  mald tui --help"
+    )]
     Hub,
 
     /// Scan and fix broken wikilinks
@@ -398,16 +437,50 @@ pub enum Command {
 
 #[derive(Subcommand)]
 pub enum KbAction {
-    /// Create a new knowledge base
-    #[command(after_help = "Examples:\n  mald kb create work")]
-    Create { name: String },
-    /// List all knowledge bases
+    /// Create a new space
+    #[command(after_help = "Examples:\n  mald kb create work\n  mald kb create client acme prod")]
+    Create {
+        #[arg(required = true, trailing_var_arg = true)]
+        name: Vec<String>,
+    },
+    /// List all spaces
     List {
         #[arg(long)]
         json: bool,
     },
-    /// Open a knowledge base in editor
-    Open { name: String },
+    /// Show the current default space
+    Current,
+    /// Set the default space
+    #[command(
+        after_help = "Examples:\n  mald kb use              # picker when interactive\n  mald kb use work\n  mald kb use client acme"
+    )]
+    Use {
+        #[arg(trailing_var_arg = true)]
+        name: Vec<String>,
+    },
+    /// Open a space in your editor
+    #[command(
+        after_help = "Examples:\n  mald kb open            # picker when interactive\n  mald kb open work\n  mald kb open client acme"
+    )]
+    Open {
+        #[arg(trailing_var_arg = true)]
+        name: Vec<String>,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum SetupAction {
+    /// Pick or auto-detect an editor without typing full paths
+    #[command(
+        after_help = "Examples:\n  mald setup editor\n  mald setup editor code\n  mald setup editor neovim"
+    )]
+    Editor {
+        #[arg(trailing_var_arg = true)]
+        editor: Vec<String>,
+    },
+    /// Install the current MALD binary into a stable location and add it to PATH
+    #[command(after_help = "Examples:\n  mald setup path")]
+    Path,
 }
 
 #[derive(Subcommand)]
@@ -415,12 +488,20 @@ pub enum TemplateAction {
     /// List available templates
     List,
     /// Create a note from a template
-    #[command(after_help = "Examples:\n  mald template use meeting \"Q4 Planning\"")]
+    #[command(
+        after_help = "Examples:\n  mald template use meeting \"Q4 Planning\"\n  mald template use project \"MALD Roadmap\" --path projects/mald"
+    )]
     Use {
         template: String,
         title: String,
         #[arg(short, long)]
         kb: Option<String>,
+        #[arg(
+            long,
+            value_name = "DIR",
+            help = "Create the note inside a subdirectory of the active space"
+        )]
+        path: Option<String>,
     },
     /// Create a new template
     #[command(after_help = "Examples:\n  mald template create standup")]
@@ -470,7 +551,7 @@ pub enum SessionAction {
 
 #[derive(Subcommand)]
 pub enum AiAction {
-    /// Chat with your KB (no args = interactive REPL with streaming)
+    /// Chat with your current space (no args = interactive REPL with streaming)
     Chat {
         message: Option<String>,
         #[arg(short, long)]
@@ -526,7 +607,7 @@ pub enum AiAction {
     Models,
     /// Download a model
     Pull { model: String },
-    /// Build vector embeddings for a KB
+    /// Build vector embeddings for a space
     Index { kb: String },
 }
 
@@ -557,37 +638,197 @@ pub enum PluginAction {
     },
 }
 
+pub fn print_parse_error_and_exit(err: clap::Error) -> ! {
+    let kind = err.kind();
+    if matches!(kind, ErrorKind::DisplayHelp | ErrorKind::DisplayVersion) {
+        err.exit();
+    }
+    let _ = err.print();
+
+    for hint in parse_error_hints(&std::env::args().skip(1).collect::<Vec<_>>(), kind) {
+        eprintln!("  {} {}", "hint:".cyan().bold(), hint.as_str().cyan());
+    }
+    eprintln!(
+        "  {}",
+        "Run `mald --help` for the full command list.".dark_grey()
+    );
+
+    std::process::exit(2);
+}
+
+fn parse_error_hints(args: &[String], kind: ErrorKind) -> Vec<String> {
+    if args.is_empty() {
+        return Vec::new();
+    }
+
+    let head = args[0].to_lowercase();
+    let mut hints = match head.as_str() {
+        "setup"
+            if args
+                .get(1)
+                .is_some_and(|arg| arg.eq_ignore_ascii_case("ai")) =>
+        {
+            vec![
+                "Did you mean `mald ai setup`?".into(),
+                "Use `mald ai chat` after setup to chat over your notes.".into(),
+            ]
+        }
+        "setup" if args.len() == 1 => vec![
+            "Try `mald setup` for the guided wizard.".into(),
+            "Try `mald setup editor` to pick VS Code, Neovim, or another editor.".into(),
+            "Try `mald setup path` if `mald` does not work in Command Prompt or PowerShell.".into(),
+        ],
+        "editor" | "code" | "nvim" | "neovim" => vec![
+            "Try `mald setup editor` to pick a detected editor.".into(),
+            "You can also run `mald config get editor` to inspect the current one.".into(),
+        ],
+        "path" | "install" => vec![
+            "Try `mald setup path` to add MALD to PATH from inside the app.".into(),
+            "If you downloaded the standalone EXE, this is the easiest way to make `mald` work everywhere.".into(),
+        ],
+        "help" if args.get(1).is_some_and(|arg| !arg.starts_with('-')) => vec![
+            format!("Did you mean `mald help-topic {}`?", args[1]),
+            "Use `mald --help` for the full command list.".into(),
+        ],
+        "ui" | "app" | "desktop" | "window" => vec![
+            "Did you mean `mald gui`?".into(),
+            "Use `mald tui` if you want the terminal UI instead.".into(),
+        ],
+        "workspace" | "workspaces" | "vault" | "vaults" => vec![
+            "Try `mald kb list` to see available spaces.".into(),
+            "Try `mald launch` to pick one and open MALD there.".into(),
+        ],
+        "kb" | "space" | "spaces" if args.len() == 1 => vec![
+            "Try `mald kb list` to see spaces.".into(),
+            "Try `mald kb current` to inspect the active one.".into(),
+            "Try `mald kb use <name>` to switch the default space.".into(),
+        ],
+        "ai" if args.len() == 1 => vec![
+            "Try `mald ai chat` to chat over your current space.".into(),
+            "Try `mald ai setup` to install and configure local AI.".into(),
+        ],
+        "search" if args.len() == 1 => vec![
+            "Run `mald search \"term\"` for CLI results.".into(),
+            "Use `mald tui` or `mald gui` for interactive search.".into(),
+        ],
+        _ => best_command_matches(&head)
+            .into_iter()
+            .map(|candidate| format!("Did you mean `mald {candidate}`?"))
+            .collect(),
+    };
+
+    if matches!(
+        kind,
+        ErrorKind::InvalidSubcommand | ErrorKind::UnknownArgument
+    ) && hints.is_empty()
+    {
+        hints.push("Try `mald gui`, `mald launch`, `mald tui`, or `mald kb list`.".into());
+    }
+
+    hints.truncate(3);
+    hints
+}
+
+fn best_command_matches(input: &str) -> Vec<&'static str> {
+    const COMMANDS: &[&str] = &[
+        "gui",
+        "launch",
+        "tui",
+        "setup",
+        "setup editor",
+        "setup path",
+        "init",
+        "today",
+        "new",
+        "capture",
+        "find",
+        "edit",
+        "open",
+        "kb list",
+        "kb current",
+        "kb use",
+        "search",
+        "doctor",
+        "status",
+        "ai chat",
+        "ai setup",
+    ];
+
+    let mut scored: Vec<(&str, usize)> = COMMANDS
+        .iter()
+        .map(|candidate| (*candidate, suggestion_distance(input, candidate)))
+        .filter(|(_, score)| *score <= 4)
+        .collect();
+    scored.sort_by_key(|(_, score)| *score);
+    scored
+        .into_iter()
+        .map(|(candidate, _)| candidate)
+        .take(3)
+        .collect()
+}
+
+fn suggestion_distance(input: &str, candidate: &str) -> usize {
+    let candidate = candidate.split_whitespace().next().unwrap_or(candidate);
+    if candidate.starts_with(input) || input.starts_with(candidate) {
+        return 0;
+    }
+    if candidate.contains(input) || input.contains(candidate) {
+        return 1;
+    }
+
+    let a: Vec<char> = input.chars().collect();
+    let b: Vec<char> = candidate.chars().collect();
+    let mut prev: Vec<usize> = (0..=b.len()).collect();
+    let mut curr = vec![0; b.len() + 1];
+
+    for (i, ca) in a.iter().enumerate() {
+        curr[0] = i + 1;
+        for (j, cb) in b.iter().enumerate() {
+            let cost = usize::from(ca != cb);
+            curr[j + 1] = (prev[j + 1] + 1).min(curr[j] + 1).min(prev[j] + cost);
+        }
+        std::mem::swap(&mut prev, &mut curr);
+    }
+
+    prev[b.len()]
+}
+
 pub async fn run(cli: Cli) -> anyhow::Result<()> {
     let free_args = cli.args;
     match cli.command {
-        // No args: open today's note (muscle memory — fastest path)
+        // No args: non-interactive falls back to dashboard; interactive GUI is handled in main.rs.
         None => {
             if !free_args.is_empty() {
                 // Free-form text: smart search → open
                 crate::commands::find::run(free_args, None).await
             } else if !crate::fs::mald_home().exists() {
                 crate::commands::wizard::run().await
-            } else if std::io::IsTerminal::is_terminal(&std::io::stdout()) {
-                crate::commands::new::today(None).await
             } else {
-                // Non-interactive (piped/test): show dashboard
                 crate::commands::dashboard::run().await
             }
         }
 
+        Some(Command::Gui) | Some(Command::Launch { .. }) => Ok(()),
         Some(Command::Hub) => crate::commands::tui::run_full_tui().await,
         Some(Command::Status) => crate::commands::dashboard::run().await,
-        Some(Command::Setup) => crate::commands::setup::run().await,
+        Some(Command::Setup { action }) => crate::commands::setup::run(action).await,
         Some(Command::Init) => crate::commands::init::run().await,
         Some(Command::New {
             title,
             kb,
             template,
+            path,
         }) => {
             if let Some(tmpl) = template {
-                crate::commands::templates::create_from_template(&tmpl, &title, kb.as_deref()).await
+                crate::commands::templates::create_from_template(
+                    &tmpl,
+                    &title,
+                    kb.as_deref(),
+                    path.as_deref(),
+                )
+                .await
             } else {
-                crate::commands::new::run(&title, kb.as_deref()).await
+                crate::commands::new::run(&title, kb.as_deref(), path.as_deref()).await
             }
         }
         Some(Command::Today { kb }) => crate::commands::new::today(kb.as_deref()).await,
@@ -607,9 +848,22 @@ pub async fn run(cli: Cli) -> anyhow::Result<()> {
         Some(Command::Open { kb }) => crate::commands::open::run(kb.as_deref()).await,
         Some(Command::Info { note, kb }) => crate::commands::info::run(&note, kb.as_deref()).await,
         Some(Command::Kb { action }) => match action {
-            KbAction::Create { name } => crate::commands::kb::create(&name).await,
+            KbAction::Create { name } => {
+                let name = name.join(" ");
+                crate::commands::kb::create(name.trim()).await
+            }
             KbAction::List { json } => crate::commands::kb::list(json).await,
-            KbAction::Open { name } => crate::commands::kb::open(&name).await,
+            KbAction::Current => crate::commands::kb::current().await,
+            KbAction::Use { name } => {
+                let name = name.join(" ");
+                let requested = (!name.trim().is_empty()).then_some(name);
+                crate::commands::kb::use_kb(requested.as_deref()).await
+            }
+            KbAction::Open { name } => {
+                let name = name.join(" ");
+                let requested = (!name.trim().is_empty()).then_some(name);
+                crate::commands::kb::open(requested.as_deref()).await
+            }
         },
         Some(Command::Search {
             query,
@@ -677,7 +931,7 @@ pub async fn run(cli: Cli) -> anyhow::Result<()> {
                 crate::commands::export::run(&n, kb.as_deref(), output.as_deref()).await
             } else {
                 Err(crate::errors::bail_ctx(
-                    "Specify a note name, or use --all to export entire KB",
+                    "Specify a note name, or use --all to export the entire space",
                     "Examples: `mald export my-note` or `mald export --all`",
                 ))
             }
@@ -694,9 +948,15 @@ pub async fn run(cli: Cli) -> anyhow::Result<()> {
                 template,
                 title,
                 kb,
+                path,
             } => {
-                crate::commands::templates::create_from_template(&template, &title, kb.as_deref())
-                    .await
+                crate::commands::templates::create_from_template(
+                    &template,
+                    &title,
+                    kb.as_deref(),
+                    path.as_deref(),
+                )
+                .await
             }
             TemplateAction::Create { name } => crate::commands::templates::create(&name).await,
             TemplateAction::Edit { name } => crate::commands::templates::edit(&name).await,

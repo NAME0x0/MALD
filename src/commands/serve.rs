@@ -10,12 +10,12 @@ fn html_escape(s: &str) -> String {
         .replace('\'', "&#x27;")
 }
 
-/// Start a local HTTP server that renders the KB as HTML and provides a capture API.
+/// Start a local HTTP server that renders the active space as HTML and provides a capture API.
 pub async fn run(kb: Option<&str>, port: u16) -> Result<()> {
     let (_config, _typed, kb_name, kb_path) = crate::config::resolve_kb(kb)?;
 
     if !kb_path.exists() {
-        bail!("Knowledge base '{kb_name}' not found");
+        bail!("Space '{kb_name}' not found");
     }
 
     let addr = format!("127.0.0.1:{port}");

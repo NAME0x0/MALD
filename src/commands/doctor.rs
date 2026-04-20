@@ -93,7 +93,7 @@ pub async fn collect_report() -> Result<DoctorReport> {
         None
     };
 
-    // 3. Knowledge bases
+    // 3. Spaces
     let kb_dir = home.join("kb");
     let kb_count = if kb_dir.exists() {
         std::fs::read_dir(&kb_dir)
@@ -108,10 +108,27 @@ pub async fn collect_report() -> Result<DoctorReport> {
     };
     push_check(
         &mut report,
-        "Knowledge bases",
+        "Spaces",
         kb_count > 0,
         format!("{kb_count} found"),
         "Run `mald kb create <name>`".into(),
+    );
+
+    // 3b. MALD command availability
+    push_warning(
+        &mut report,
+        "MALD shell command",
+        crate::commands::setup::mald_on_path(),
+        if crate::commands::setup::mald_on_path() {
+            "available in PATH".into()
+        } else {
+            "not available in new shells yet".into()
+        },
+        if cfg!(windows) {
+            "Run `mald setup path` to add MALD to PATH for Command Prompt and PowerShell".into()
+        } else {
+            "Add the MALD binary directory to PATH, or install with `cargo install --path . --features gui`".into()
+        },
     );
 
     // 4. FTS index
@@ -165,7 +182,7 @@ pub async fn collect_report() -> Result<DoctorReport> {
         &format!("Editor ({editor})"),
         which_exists(&editor),
         "found in PATH".into(),
-        format!("Install {editor} or run `mald config set editor <editor>`"),
+        format!("Install {editor}, or run `mald setup editor` to choose a detected editor"),
     );
 
     // 8. Ollama
@@ -368,22 +385,7 @@ pub fn which_exists_pub(cmd: &str) -> bool {
 }
 
 fn which_exists(cmd: &str) -> bool {
-    #[cfg(windows)]
-    {
-        std::process::Command::new("where")
-            .arg(cmd)
-            .output()
-            .map(|output| output.status.success())
-            .unwrap_or(false)
-    }
-    #[cfg(not(windows))]
-    {
-        std::process::Command::new("which")
-            .arg(cmd)
-            .output()
-            .map(|output| output.status.success())
-            .unwrap_or(false)
-    }
+    crate::commands::launch::command_exists(cmd)
 }
 
 async fn check_ollama() -> bool {

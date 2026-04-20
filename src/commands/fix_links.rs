@@ -10,8 +10,8 @@ pub async fn run(kb: Option<&str>, auto_fix: bool) -> Result<()> {
     let (_config, _typed, kb_name, kb_path) = crate::config::resolve_kb(kb)?;
     if !kb_path.exists() {
         return Err(crate::errors::bail_ctx(
-            format!("Knowledge base '{kb_name}' not found"),
-            "Run `mald kb list` to see available KBs",
+            format!("Space '{kb_name}' not found"),
+            "Run `mald kb list` to see available spaces",
         ));
     }
 
@@ -124,7 +124,7 @@ pub async fn run(kb: Option<&str>, auto_fix: bool) -> Result<()> {
     Ok(())
 }
 
-/// Collect all note stems from a KB for wikilink autocomplete.
+/// Collect all note stems from a space for wikilink autocomplete.
 pub fn collect_note_names(kb_path: &std::path::Path) -> Vec<String> {
     crate::fs::find_files(kb_path, "md")
         .unwrap_or_default()
@@ -133,7 +133,7 @@ pub fn collect_note_names(kb_path: &std::path::Path) -> Vec<String> {
         .collect()
 }
 
-/// Collect all note stems from ALL KBs.
+/// Collect all note stems from ALL spaces.
 pub fn collect_all_note_names() -> Vec<String> {
     let kb_dir = mald_home().join("kb");
     let mut names = Vec::new();

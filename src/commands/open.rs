@@ -1,18 +1,21 @@
-use anyhow::{bail, Result};
+use anyhow::Result;
 
-/// Open the KB directory in the configured editor (or file manager).
+/// Open the active space directory in the configured editor (or file manager).
 pub async fn run(kb: Option<&str>) -> Result<()> {
     let (_config, typed, kb_name, kb_path) = crate::config::resolve_kb(kb)?;
 
     if !kb_path.exists() {
-        bail!("Knowledge base '{kb_name}' not found. Create it with: mald kb create {kb_name}");
+        return Err(crate::errors::bail_ctx(
+            format!("Space `{kb_name}` not found."),
+            format!("Run `mald kb list` to inspect your workspace, or `mald kb create {kb_name}` to create it."),
+        ));
     }
 
     let editor = typed.editor.clone();
 
     // Some editors (VS Code, Sublime) can open directories
     // For terminal editors, open the index.md or first file
-    let target = if editor.contains("code") || editor.contains("subl") || editor.contains("zed") {
+    let target = if crate::commands::launch::supports_directory_target(&editor) {
         kb_path.clone()
     } else {
         // Terminal editor — open index.md or first file found
@@ -25,9 +28,7 @@ pub async fn run(kb: Option<&str>) -> Result<()> {
         }
     };
 
-    std::process::Command::new(&editor)
-        .arg(target.to_str().unwrap())
-        .status()?;
+    crate::commands::launch::open_in_editor(&editor, target.as_os_str())?;
 
     Ok(())
 }

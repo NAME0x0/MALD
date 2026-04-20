@@ -10,6 +10,7 @@ pub async fn create_from_template(
     template_name: &str,
     title: &str,
     kb: Option<&str>,
+    path: Option<&str>,
 ) -> Result<()> {
     let (_config, typed, kb_name, _kb_path) = crate::config::resolve_kb(kb)?;
 
@@ -28,13 +29,15 @@ pub async fn create_from_template(
 
     let kb_path = mald_home().join("kb").join(&kb_name);
     if !kb_path.exists() {
-        bail!("Knowledge base '{kb_name}' not found");
+        bail!("Space '{kb_name}' not found");
     }
 
     let now = Local::now();
     let slug = slugify(title);
     let filename = format!("{}-{}.md", now.format("%Y%m%d"), slug);
-    let filepath = kb_path.join(&filename);
+    let note_dir = crate::commands::new::resolve_note_dir(&kb_path, path)?;
+    ensure_directory(&note_dir)?;
+    let filepath = note_dir.join(&filename);
 
     if filepath.exists() {
         bail!("File already exists: {}", filepath.display());
@@ -53,9 +56,7 @@ pub async fn create_from_template(
     println!("{}", filepath.display());
 
     let editor = typed.editor.clone();
-    std::process::Command::new(&editor)
-        .arg(filepath.to_str().unwrap())
-        .status()?;
+    crate::commands::launch::open_in_editor(&editor, filepath.as_os_str())?;
 
     Ok(())
 }
@@ -153,9 +154,7 @@ pub async fn create(name: &str) -> Result<()> {
     let config_path = mald_home().join("config").join("config.json");
     let config = ConfigManager::load(&config_path)?;
     let editor = config.typed().editor.clone();
-    std::process::Command::new(&editor)
-        .arg(path.to_str().unwrap())
-        .status()?;
+    crate::commands::launch::open_in_editor(&editor, path.as_os_str())?;
 
     Ok(())
 }
@@ -185,9 +184,7 @@ pub async fn edit(name: &str) -> Result<()> {
     let config_path = mald_home().join("config").join("config.json");
     let config = ConfigManager::load(&config_path)?;
     let editor = config.typed().editor.clone();
-    std::process::Command::new(&editor)
-        .arg(path.to_str().unwrap())
-        .status()?;
+    crate::commands::launch::open_in_editor(&editor, path.as_os_str())?;
     Ok(())
 }
 

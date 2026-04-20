@@ -7,7 +7,7 @@ use crate::index::metadata::MetadataStore;
 
 /// Search with optional date filter. `since` can be "YYYY-MM-DD" or "Nd" (e.g. "30d").
 pub async fn run(query: &str, k: usize, since: Option<&str>, json: bool) -> Result<()> {
-    // Ensure all KBs are indexed
+    // Ensure all spaces are indexed
     let kb_dir = mald_home().join("kb");
     if kb_dir.exists() {
         crate::daemon::indexer::fts_index_kb(&kb_dir)?;
@@ -20,7 +20,7 @@ pub async fn run(query: &str, k: usize, since: Option<&str>, json: bool) -> Resu
         if json {
             println!("[]");
         } else {
-            println!("No knowledge bases indexed. Run `mald init` first.");
+            println!("No spaces indexed yet. Run `mald init` first.");
         }
         return Ok(());
     }

@@ -45,7 +45,7 @@ SETUP:
 CHAT (with cited RAG):
   mald ai chat                 Interactive REPL
   mald ai chat \"question\"      One-shot question
-  mald ai chat --kb work       Use specific KB as context
+  mald ai chat --kb work       Use a specific space as context
   mald ai chat --new           Start fresh conversation
 
   In REPL: /quit, /new, /history
@@ -63,7 +63,7 @@ ANALYSIS:
 MODELS:
   mald ai models                   List installed models
   mald ai pull <model>             Download a model
-  mald ai index <kb>               Build vector embeddings
+  mald ai index <kb>               Build vector embeddings for a space
 
 TROUBLESHOOTING:
   - 'Connection refused': Ollama isn't running. Start with `ollama serve`.
@@ -87,7 +87,7 @@ Semantic (Vector Search):
   - Build with: mald ai index <kb>
 
 USAGE:
-  mald search \"query\"             Search all KBs
+  mald search \"query\"             Search all spaces
   mald search \"query\" --since 7d  Last 7 days only
   mald search \"query\" --since 2025-01-01
   mald search                     Interactive TUI with preview pane
@@ -96,7 +96,7 @@ USAGE:
 HOW IT WORKS:
   1. If vector index exists and Ollama is running, tries semantic search first
   2. Falls back to FTS5 (always works)
-  3. Search covers ALL knowledge bases automatically
+  3. Search covers ALL spaces automatically
 
 TROUBLESHOOTING:
   - No results: Run `mald reindex` to rebuild the index
@@ -140,7 +140,7 @@ VARIABLES:
   {{date}}      YYYY-MM-DD
   {{time}}      HH:MM
   {{datetime}}  YYYY-MM-DD HH:MM
-  {{kb}}        Knowledge base name
+  {{kb}}        Space name
   {{year}}      YYYY
   {{month}}     MM
   {{day}}       DD
@@ -168,7 +168,7 @@ USAGE:
   mald daemon status     Check if running
 
 WHAT IT DOES:
-  - Watches all KB directories for file changes
+  - Watches all space directories for file changes
   - Re-indexes changed files into FTS (instant)
   - Re-indexes into vector index (if Ollama running)
   - Updates modified timestamp in frontmatter
@@ -237,7 +237,7 @@ MERMAID OUTPUT:
 TIPS:
   - Use `mald rename` to rename notes (updates all backlinks)
   - `mald review` includes orphan and broken link detection
-  - `mald doctor` counts broken links across all KBs";
+  - `mald doctor` counts broken links across all spaces";
 
 const TASK_HELP: &str = "\
 Tasks
@@ -245,9 +245,9 @@ Tasks
 MALD aggregates `- [ ]` checkboxes from your markdown notes.
 
 USAGE:
-  mald tasks              Open tasks from default KB
-  mald tasks --kb work    From specific KB
-  mald tasks --all        From all KBs
+  mald tasks              Open tasks from the default space
+  mald tasks --kb work    From a specific space
+  mald tasks --all        From all spaces
 
   mald review             Includes tasks in the weekly review
   mald                    Dashboard shows top 5 tasks
@@ -304,7 +304,7 @@ JSON OUTPUT (for scripts):
   mald search \"query\" --json     Structured search results
   mald tasks --json               Task objects with note/kb/task fields
   mald tags --json                Tag counts and note lists
-  mald kb list --json             KB metadata (name, path, note count)
+  mald kb list --json             Space metadata (name, path, note count)
 
 NEOVIM PLUGIN:
 

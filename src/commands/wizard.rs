@@ -34,7 +34,7 @@ pub async fn run() -> Result<()> {
     let mut config = ConfigManager::load(&config_path)?;
 
     // 1. Detect and choose editor
-    let editor = choose_editor()?;
+    let editor = crate::commands::setup::select_editor(None, true)?;
     config.set("editor", serde_json::Value::String(editor.clone()))?;
     println!(
         "  {} Editor set to {}\n",
@@ -42,13 +42,13 @@ pub async fn run() -> Result<()> {
         editor.as_str().bold()
     );
 
-    // 2. Choose KB name
-    let kb_name = prompt_string("  Knowledge base name", "personal")?;
+    // 2. Choose space name
+    let kb_name = prompt_string("  Space name", "personal")?;
     let kb_path = home.join("kb").join(&kb_name);
     ensure_directory(&kb_path)?;
     config.set("default_kb", serde_json::Value::String(kb_name.clone()))?;
     println!(
-        "  {} Created KB: {}\n",
+        "  {} Created space: {}\n",
         "->".green(),
         kb_name.as_str().bold()
     );
@@ -57,12 +57,12 @@ pub async fn run() -> Result<()> {
     crate::commands::templates::init_defaults()?;
     println!("  {} Default templates installed\n", "->".green());
 
-    // 4. Create sample note
-    create_sample_note(&kb_path, &kb_name)?;
-    println!("  {} Sample note created\n", "->".green());
+    // 4. Create starter notes
+    crate::commands::starter::seed_starter_space(&kb_path, &kb_name)?;
+    println!("  {} Starter notes created\n", "->".green());
 
     // 5. Build FTS index
-    print!("  Indexing knowledge base...");
+    print!("  Indexing space...");
     io::stdout().flush()?;
     let count = crate::daemon::indexer::fts_index_kb(&kb_path)?;
     println!(" {} {} files indexed\n", "->".green(), count);
@@ -82,11 +82,12 @@ pub async fn run() -> Result<()> {
         println!(
             " {} not detected. Run {} later for AI features (auto-installs Ollama + Gemma 3N).",
             "->".yellow(),
-            "mald setup ai".cyan()
+            "mald ai setup".cyan()
         );
     }
 
     println!();
+    crate::commands::setup::maybe_offer_path_setup()?;
     print_next_steps(&kb_name);
 
     Ok(())
@@ -111,82 +112,43 @@ fn print_banner() {
         "╚══════════════════════════════════════╝".dark_magenta()
     );
     println!();
-    println!("  Let's set up your knowledge base.\n");
+    println!("  Let's set up your space.\n");
 }
 
 fn print_next_steps(kb_name: &str) {
     println!("  {}", "Setup complete!".green().bold());
     println!();
     println!("  {}", "Next steps:".bold());
+    println!("    {}            Open the desktop app", "mald".cyan());
     println!(
-        "    {}          Open today's daily note",
+        "    {}      Pick a space and launch MALD there",
+        "mald launch".cyan()
+    );
+    println!("    {}        Open the terminal UI", "mald tui".cyan());
+    println!(
+        "    {}          Open today's daily note in your editor",
         "mald today".cyan()
     );
     println!("    {}  Create a new note", "mald new \"Title\"".cyan());
     println!("    {}   Quick capture a thought", "mald q <text>".cyan());
     println!("    {}        Interactive search", "mald search".cyan());
+    println!("    {}       Inspect spaces", "mald kb list".cyan());
+    println!("    {}  Pick a detected editor", "mald setup editor".cyan());
     println!(
-        "    {}   Browse knowledge base",
+        "    {}   Browse the active space",
         "mald open".cyan().to_string().as_str()
     );
-    println!("    {}   Set up local AI", "mald setup ai".cyan());
+    if cfg!(windows) {
+        println!(
+            "    {}     Make `mald` work in new terminals",
+            "mald setup path".cyan()
+        );
+    }
+    println!("    {}     Set up local AI", "mald ai setup".cyan());
     println!("    {}        Check your setup", "mald doctor".cyan());
     println!();
     println!("  Run {} for all commands.", "mald --help".cyan());
     let _ = kb_name; // used in banner context
-}
-
-/// Detect installed editors and present a choice.
-fn choose_editor() -> Result<String> {
-    let editors = [
-        ("nvim", "Neovim"),
-        ("vim", "Vim"),
-        ("code", "VS Code"),
-        ("nano", "Nano"),
-        ("hx", "Helix"),
-        ("emacs", "Emacs"),
-    ];
-
-    let mut available: Vec<(&str, &str)> = Vec::new();
-    for (cmd, name) in &editors {
-        if crate::commands::doctor::which_exists_pub(cmd) {
-            available.push((cmd, name));
-        }
-    }
-
-    if available.is_empty() {
-        available = editors.to_vec();
-    }
-
-    println!("  {}:", "Choose your editor".bold());
-    for (i, (cmd, name)) in available.iter().enumerate() {
-        let detected = if crate::commands::doctor::which_exists_pub(cmd) {
-            " (detected)".green().to_string()
-        } else {
-            String::new()
-        };
-        println!("    {}. {} ({}){}", i + 1, name, cmd, detected);
-    }
-
-    print!("  Choice [1]: ");
-    io::stdout().flush()?;
-
-    let mut input = String::new();
-    io::stdin().read_line(&mut input)?;
-    let input = input.trim();
-
-    if input.is_empty() {
-        return Ok(available[0].0.to_string());
-    }
-
-    if let Ok(n) = input.parse::<usize>() {
-        if n >= 1 && n <= available.len() {
-            return Ok(available[n - 1].0.to_string());
-        }
-    }
-
-    // Allow typing the editor name directly
-    Ok(input.to_string())
 }
 
 fn prompt_string(label: &str, default: &str) -> Result<String> {
@@ -202,32 +164,4 @@ fn prompt_string(label: &str, default: &str) -> Result<String> {
     } else {
         Ok(input.to_string())
     }
-}
-
-fn create_sample_note(kb_path: &std::path::Path, kb_name: &str) -> Result<()> {
-    let index_path = kb_path.join("index.md");
-    if !index_path.exists() {
-        let date = chrono::Local::now().format("%Y-%m-%d");
-        std::fs::write(
-            &index_path,
-            format!(
-                "---\ntitle: {kb_name}\ncreated: {date}\ntags: [mald, guide]\n---\n\n\
-                # {kb_name}\n\n\
-                Welcome to your knowledge base!\n\n\
-                ## Getting Started\n\n\
-                - [[inbox]] — capture thoughts quickly\n\
-                - [[projects]] — track active work\n\n\
-                ## Quick Tips\n\n\
-                - Use `mald q \"thought\"` to capture ideas fast\n\
-                - Use `mald today` to open your daily note\n\
-                - Use `mald search` for interactive fuzzy search\n\
-                - Use `[[wikilinks]]` to connect your notes\n\n\
-                ## Tasks\n\n\
-                - [ ] Create your first note with `mald new \"My Note\"`\n\
-                - [ ] Try quick capture: `mald q buy milk`\n\
-                - [ ] Explore search: `mald search`\n"
-            ),
-        )?;
-    }
-    Ok(())
 }

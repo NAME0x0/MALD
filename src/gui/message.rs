@@ -150,10 +150,18 @@ pub enum Message {
     SettingsSave,
     SettingsReset,
     SettingsSaved(Result<GuiSettingsForm, String>),
+    PathSetupRun,
+    PathSetupCompleted(Result<String, String>),
+    CurrentKbSwitch(String),
+    CurrentKbSwitched(Result<String, String>),
+    DemoSpaceOpen,
+    DemoSpaceOpened(Result<PathBuf, String>),
 
     // ── New Note ──
     NewNotePrompt,
     NewNoteTitleChanged(String),
+    NewNotePathChanged(String),
+    NewNoteKbSelected(String),
     NewNoteCreate(String),
     NewNoteCreated(Result<PathBuf, String>),
     ReindexCompleted(Result<usize, String>),

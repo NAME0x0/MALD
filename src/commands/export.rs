@@ -58,11 +58,11 @@ pub async fn run(note: &str, kb: Option<&str>, output: Option<&str>) -> Result<(
     Ok(())
 }
 
-/// Export all notes from a KB to a directory of HTML files or plain markdown.
+/// Export all notes from a space to a directory of HTML files or plain markdown.
 pub async fn export_all(kb: Option<&str>, output_dir: &str, format: &str) -> Result<()> {
     let (_config, _typed, kb_name, kb_path) = crate::config::resolve_kb(kb)?;
     if !kb_path.exists() {
-        bail!("Knowledge base '{kb_name}' not found");
+        bail!("Space '{kb_name}' not found");
     }
 
     let out = std::path::Path::new(output_dir);
