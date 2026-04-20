@@ -4,11 +4,11 @@ use serde_json::Value;
 use std::io::{self, IsTerminal, Write};
 
 #[cfg(windows)]
+use crate::fs::ensure_directory;
+#[cfg(windows)]
 use std::path::{Path, PathBuf};
 #[cfg(windows)]
 use std::process::Command;
-#[cfg(windows)]
-use crate::fs::ensure_directory;
 
 use crate::config::ConfigManager;
 
