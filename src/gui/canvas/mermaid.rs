@@ -447,9 +447,9 @@ impl MermaidColors {
                 colors::SURFACE2
             },
             blue: if light {
-                colors::latte::BLUE
+                colors::latte::ACCENT
             } else {
-                colors::BLUE
+                colors::ACCENT
             },
         }
     }

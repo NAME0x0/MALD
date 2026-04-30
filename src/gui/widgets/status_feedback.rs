@@ -23,7 +23,7 @@ impl StatusType {
             StatusType::Success => if is_dark { colors::GREEN } else { colors::latte::GREEN },
             StatusType::Warning => if is_dark { colors::YELLOW } else { colors::latte::YELLOW },
             StatusType::Error => if is_dark { colors::RED } else { colors::latte::RED },
-            StatusType::Info => if is_dark { colors::BLUE } else { colors::latte::BLUE },
+            StatusType::Info => if is_dark { colors::ACCENT } else { colors::latte::ACCENT },
         }
     }
 }

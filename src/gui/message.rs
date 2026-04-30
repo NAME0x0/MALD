@@ -167,6 +167,10 @@ pub enum Message {
     ReindexCompleted(Result<usize, String>),
     DoctorCompleted(Result<DoctorSummary, String>),
 
+    // ── Index stats footer ──
+    IndexStatsRefresh,
+    IndexStatsLoaded(Option<IndexStats>),
+
     // ── Misc ──
     Tick,
     AnimationTick(Instant),
@@ -249,25 +253,31 @@ impl ActivityMode {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum FeaturePanelContent {
     #[default]
+    Context,
     Backlinks,
     AIChat,
     Outline,
+    Timeline,
 }
 
 impl FeaturePanelContent {
     pub fn label(&self) -> &'static str {
         match self {
+            FeaturePanelContent::Context => "Context",
             FeaturePanelContent::Backlinks => "Backlinks",
             FeaturePanelContent::AIChat => "AI Chat",
             FeaturePanelContent::Outline => "Outline",
+            FeaturePanelContent::Timeline => "Timeline",
         }
     }
 
     pub fn all() -> &'static [FeaturePanelContent] {
         &[
+            FeaturePanelContent::Context,
             FeaturePanelContent::Backlinks,
             FeaturePanelContent::AIChat,
             FeaturePanelContent::Outline,
+            FeaturePanelContent::Timeline,
         ]
     }
 }
@@ -378,4 +388,21 @@ pub enum DaemonStatus {
     Running,
     Stopped,
     Unknown,
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct IndexStats {
+    pub indexed: usize,
+    pub total: usize,
+}
+
+impl IndexStats {
+    pub fn percent(&self) -> u32 {
+        if self.total == 0 {
+            return 0;
+        }
+        ((self.indexed as f64 / self.total as f64) * 100.0)
+            .round()
+            .clamp(0.0, 100.0) as u32
+    }
 }

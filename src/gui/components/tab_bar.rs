@@ -91,9 +91,9 @@ fn tab_button(tab: TabInfo, active: bool, is_dark: bool) -> Element<'static, Mes
         colors::latte::SUBTEXT0
     };
     let blue = if is_dark {
-        colors::BLUE
+        colors::ACCENT
     } else {
-        colors::latte::BLUE
+        colors::latte::ACCENT
     };
     let base_bg = if is_dark {
         colors::BASE

@@ -26,9 +26,9 @@ impl ToastLevel {
         match self {
             ToastLevel::Info => {
                 if is_dark {
-                    colors::BLUE
+                    colors::ACCENT
                 } else {
-                    colors::latte::BLUE
+                    colors::latte::ACCENT
                 }
             }
             ToastLevel::Success => {

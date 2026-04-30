@@ -43,6 +43,10 @@ pub mod colors {
     pub const FLAMINGO: Color = Color::from_rgb(0.949, 0.804, 0.804); // #f2cdcd - Subtle highlight
     pub const ROSEWATER: Color = Color::from_rgb(0.961, 0.878, 0.878); // #f5e0dc - Soft highlight
 
+    // Brand accent — MALD identity is green-on-black terminal vibe.
+    // Aliases GREEN; swap source color here to retint app-wide.
+    pub const ACCENT: Color = GREEN;
+
     // Semantic colors (aliases for clarity — dark theme only, use themed() for light)
     pub const ACTIVITY_BAR_BG: Color = CRUST;
     pub const STATUS_BAR_BG: Color = CRUST;
@@ -96,6 +100,9 @@ pub mod colors {
         pub const SAPPHIRE: Color = Color::from_rgb(0.125, 0.584, 0.714); // #209fb5
         pub const BLUE: Color = Color::from_rgb(0.118, 0.404, 0.961); // #1e66f5
         pub const LAVENDER: Color = Color::from_rgb(0.443, 0.475, 0.863); // #7287fd
+
+        // Brand accent — light mode mirrors dark via GREEN
+        pub const ACCENT: Color = GREEN;
 
         // Text colors
         pub const TEXT: Color = Color::from_rgb(0.298, 0.322, 0.404); // #4c4f69
@@ -354,7 +361,7 @@ fn catppuccin_mocha_palette() -> Palette {
     Palette {
         background: colors::BASE,
         text: colors::TEXT,
-        primary: colors::BLUE,
+        primary: colors::ACCENT,
         success: colors::GREEN,
         danger: colors::RED,
         warning: colors::YELLOW,
@@ -365,7 +372,7 @@ fn catppuccin_latte_palette() -> Palette {
     Palette {
         background: colors::latte::BASE,
         text: colors::latte::TEXT,
-        primary: colors::latte::BLUE,
+        primary: colors::latte::ACCENT,
         success: colors::latte::GREEN,
         danger: colors::latte::RED,
         warning: colors::latte::YELLOW,
@@ -531,9 +538,9 @@ pub fn top_search_container_style(focused: bool) -> impl Fn(&Theme) -> container
             border: Border {
                 color: if focused {
                     if light {
-                        colors::latte::BLUE
+                        colors::latte::ACCENT
                     } else {
-                        colors::BLUE
+                        colors::ACCENT
                     }
                 } else if light {
                     colors::latte::SURFACE0
@@ -628,7 +635,7 @@ pub fn aw_card_style(theme: &Theme, status: AwStatus) -> aw_card::Style {
 
     let (border_color, head_bg) = if light {
         match status {
-            AwStatus::Hovered => (colors::latte::BLUE, colors::latte::SURFACE1),
+            AwStatus::Hovered => (colors::latte::ACCENT, colors::latte::SURFACE1),
             AwStatus::Pressed | AwStatus::Focused | AwStatus::Selected => {
                 (colors::latte::LAVENDER, colors::latte::SURFACE2)
             }
@@ -637,7 +644,7 @@ pub fn aw_card_style(theme: &Theme, status: AwStatus) -> aw_card::Style {
         }
     } else {
         match status {
-            AwStatus::Hovered => (colors::BLUE, colors::SURFACE1),
+            AwStatus::Hovered => (colors::ACCENT, colors::SURFACE1),
             AwStatus::Pressed | AwStatus::Focused | AwStatus::Selected => {
                 (colors::LAVENDER, colors::SURFACE2)
             }
@@ -781,9 +788,9 @@ pub fn ghost_button_style(active: bool) -> impl Fn(&Theme, button::Status) -> bu
             button::Status::Active => {
                 if active {
                     if light {
-                        (colors::latte::SURFACE1, colors::latte::BLUE)
+                        (colors::latte::SURFACE1, colors::latte::ACCENT)
                     } else {
-                        (colors::SURFACE1, colors::BLUE)
+                        (colors::SURFACE1, colors::ACCENT)
                     }
                 } else if light {
                     (Color::TRANSPARENT, colors::latte::SUBTEXT0)
@@ -850,9 +857,9 @@ pub fn activity_button_style(active: bool) -> impl Fn(&Theme, button::Status) ->
             colors::SURFACE0
         };
         let active_color = if light {
-            colors::latte::BLUE
+            colors::latte::ACCENT
         } else {
-            colors::BLUE
+            colors::ACCENT
         };
         let inactive_color = if light {
             colors::latte::SUBTEXT0
@@ -916,9 +923,9 @@ pub fn primary_button_style(theme: &Theme, status: button::Status) -> button::St
     let (bg, text_color) = match status {
         button::Status::Active => {
             if light {
-                (colors::latte::BLUE, colors::latte::BASE)
+                (colors::latte::ACCENT, colors::latte::BASE)
             } else {
-                (colors::BLUE, colors::CRUST)
+                (colors::ACCENT, colors::CRUST)
             }
         }
         button::Status::Hovered => {
@@ -1061,9 +1068,9 @@ pub fn tab_button_style(
 
         let border_color = if modified {
             if light {
-                colors::latte::BLUE
+                colors::latte::ACCENT
             } else {
-                colors::BLUE
+                colors::ACCENT
             }
         } else {
             Color::TRANSPARENT
@@ -1153,7 +1160,7 @@ pub fn list_item_style(selected: bool) -> impl Fn(&Theme, button::Status) -> but
                 button::Status::Pressed => (
                     colors::latte::SURFACE0,
                     colors::latte::TEXT,
-                    colors::latte::BLUE,
+                    colors::latte::ACCENT,
                 ),
                 button::Status::Disabled => (
                     Color::TRANSPARENT,
@@ -1171,7 +1178,7 @@ pub fn list_item_style(selected: bool) -> impl Fn(&Theme, button::Status) -> but
                     }
                 }
                 button::Status::Hovered => (colors::SURFACE1, colors::TEXT, Color::TRANSPARENT),
-                button::Status::Pressed => (colors::SURFACE0, colors::TEXT, colors::BLUE),
+                button::Status::Pressed => (colors::SURFACE0, colors::TEXT, colors::ACCENT),
                 button::Status::Disabled => {
                     (Color::TRANSPARENT, colors::SURFACE2, Color::TRANSPARENT)
                 }
@@ -1207,7 +1214,7 @@ pub fn text_input_style(theme: &Theme, status: text_input::Status) -> text_input
             text_input::Status::Active => (colors::latte::SURFACE0, colors::latte::SURFACE1, 1.0),
             text_input::Status::Hovered => (colors::latte::SURFACE0, colors::latte::SURFACE2, 1.0),
             text_input::Status::Focused { .. } => {
-                (colors::latte::SURFACE0, colors::latte::BLUE, 2.0)
+                (colors::latte::SURFACE0, colors::latte::ACCENT, 2.0)
             }
             text_input::Status::Disabled => (colors::latte::MANTLE, colors::latte::SURFACE0, 1.0),
         }
@@ -1215,7 +1222,7 @@ pub fn text_input_style(theme: &Theme, status: text_input::Status) -> text_input
         match status {
             text_input::Status::Active => (colors::SURFACE0, colors::SURFACE1, 1.0),
             text_input::Status::Hovered => (colors::SURFACE0, colors::SURFACE2, 1.0),
-            text_input::Status::Focused { .. } => (colors::SURFACE0, colors::BLUE, 2.0),
+            text_input::Status::Focused { .. } => (colors::SURFACE0, colors::ACCENT, 2.0),
             text_input::Status::Disabled => (colors::MANTLE, colors::SURFACE0, 1.0),
         }
     };
@@ -1256,17 +1263,17 @@ pub fn search_input_style(theme: &Theme, status: text_input::Status) -> text_inp
     let (bg, border_color, border_width) = if light {
         match status {
             text_input::Status::Active => (colors::latte::SURFACE0, colors::latte::SURFACE1, 1.0),
-            text_input::Status::Hovered => (colors::latte::SURFACE0, colors::latte::BLUE, 1.0),
+            text_input::Status::Hovered => (colors::latte::SURFACE0, colors::latte::ACCENT, 1.0),
             text_input::Status::Focused { .. } => {
-                (colors::latte::SURFACE0, colors::latte::BLUE, 2.0)
+                (colors::latte::SURFACE0, colors::latte::ACCENT, 2.0)
             }
             text_input::Status::Disabled => (colors::latte::MANTLE, colors::latte::SURFACE0, 1.0),
         }
     } else {
         match status {
             text_input::Status::Active => (colors::SURFACE0, colors::SURFACE1, 1.0),
-            text_input::Status::Hovered => (colors::SURFACE0, colors::BLUE, 1.0),
-            text_input::Status::Focused { .. } => (colors::SURFACE0, colors::BLUE, 2.0),
+            text_input::Status::Hovered => (colors::SURFACE0, colors::ACCENT, 1.0),
+            text_input::Status::Focused { .. } => (colors::SURFACE0, colors::ACCENT, 2.0),
             text_input::Status::Disabled => (colors::MANTLE, colors::SURFACE0, 1.0),
         }
     };
@@ -1307,9 +1314,9 @@ pub fn terminal_input_style(theme: &Theme, status: text_input::Status) -> text_i
     let border_color = match status {
         text_input::Status::Focused { .. } => {
             if light {
-                colors::latte::BLUE
+                colors::latte::ACCENT
             } else {
-                colors::BLUE
+                colors::ACCENT
             }
         }
         _ => {
@@ -1366,14 +1373,16 @@ pub fn text_editor_style(theme: &Theme, status: text_editor::Status) -> text_edi
         match status {
             text_editor::Status::Active => (colors::latte::BASE, colors::latte::SURFACE0, 0.0),
             text_editor::Status::Hovered => (colors::latte::BASE, colors::latte::SURFACE1, 0.0),
-            text_editor::Status::Focused { .. } => (colors::latte::BASE, colors::latte::BLUE, 0.0),
+            text_editor::Status::Focused { .. } => {
+                (colors::latte::BASE, colors::latte::ACCENT, 0.0)
+            }
             text_editor::Status::Disabled => (colors::latte::MANTLE, colors::latte::SURFACE0, 0.0),
         }
     } else {
         match status {
             text_editor::Status::Active => (colors::BASE, colors::SURFACE0, 0.0),
             text_editor::Status::Hovered => (colors::BASE, colors::SURFACE1, 0.0),
-            text_editor::Status::Focused { .. } => (colors::BASE, colors::BLUE, 0.0),
+            text_editor::Status::Focused { .. } => (colors::BASE, colors::ACCENT, 0.0),
             text_editor::Status::Disabled => (colors::MANTLE, colors::SURFACE0, 0.0),
         }
     };
@@ -1425,7 +1434,7 @@ pub fn scrollable_style(theme: &Theme, status: scrollable::Status) -> scrollable
                     colors::latte::SURFACE1
                 }
             }
-            scrollable::Status::Dragged { .. } => colors::latte::BLUE,
+            scrollable::Status::Dragged { .. } => colors::latte::ACCENT,
         }
     } else {
         match status {
@@ -1441,7 +1450,7 @@ pub fn scrollable_style(theme: &Theme, status: scrollable::Status) -> scrollable
                     colors::SURFACE1
                 }
             }
-            scrollable::Status::Dragged { .. } => colors::BLUE,
+            scrollable::Status::Dragged { .. } => colors::ACCENT,
         }
     };
 

@@ -378,9 +378,9 @@ impl canvas::Program<Message> for GraphCanvas {
             colors::SURFACE2
         };
         let node_base = if light {
-            colors::latte::BLUE
+            colors::latte::ACCENT
         } else {
-            colors::BLUE
+            colors::ACCENT
         };
         let node_hover = if light {
             colors::latte::LAVENDER

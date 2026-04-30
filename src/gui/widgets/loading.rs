@@ -50,7 +50,7 @@ impl<'a> Loading<'a> {
 
     /// Render the loading indicator.
     pub fn view(self) -> Element<'a, Message> {
-        let blue = if self.is_dark { colors::BLUE } else { colors::latte::BLUE };
+        let blue = if self.is_dark { colors::ACCENT } else { colors::latte::ACCENT };
         let subtext0 = if self.is_dark { colors::SUBTEXT0 } else { colors::latte::SUBTEXT0 };
 
         match self.size {

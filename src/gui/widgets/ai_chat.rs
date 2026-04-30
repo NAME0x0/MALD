@@ -48,9 +48,9 @@ pub fn view<'a>(
         colors::latte::TEXT
     };
     let blue = if is_dark {
-        colors::BLUE
+        colors::ACCENT
     } else {
-        colors::latte::BLUE
+        colors::latte::ACCENT
     };
     let teal = if is_dark {
         colors::TEAL

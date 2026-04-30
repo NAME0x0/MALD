@@ -39,6 +39,7 @@ pub fn run() -> anyhow::Result<()> {
         .theme(MaldApp::theme)
         .subscription(MaldApp::subscription)
         .window(window)
+        .default_font(iced::Font::MONOSPACE)
         .antialiasing(true)
         .run()
         .map_err(|e| anyhow::anyhow!("GUI error: {e}"));

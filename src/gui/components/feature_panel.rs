@@ -22,9 +22,11 @@ pub fn view<'a>(
 ) -> Element<'a, Message> {
     let header = panel_header(content_type, is_dark);
     let content: Element<Message> = match content_type {
+        FeaturePanelContent::Context => view_context(is_dark),
         FeaturePanelContent::Backlinks => view_backlinks(backlinks, is_dark),
         FeaturePanelContent::Outline => view_outline(outline, is_dark),
         FeaturePanelContent::AIChat => view_ai_chat(ai_messages, ai_input, ai_streaming, is_dark),
+        FeaturePanelContent::Timeline => view_timeline(is_dark),
     };
 
     let inner = column![header, content].spacing(0);
@@ -48,9 +50,9 @@ fn panel_header(content_type: FeaturePanelContent, is_dark: bool) -> Element<'st
         colors::latte::SUBTEXT0
     };
     let blue = if is_dark {
-        colors::BLUE
+        colors::ACCENT
     } else {
-        colors::latte::BLUE
+        colors::latte::ACCENT
     };
 
     let tabs: Vec<Element<Message>> = FeaturePanelContent::all()
@@ -299,9 +301,9 @@ fn view_ai_chat<'a>(
         colors::latte::TEAL
     };
     let blue = if is_dark {
-        colors::BLUE
+        colors::ACCENT
     } else {
-        colors::latte::BLUE
+        colors::latte::ACCENT
     };
 
     let history: Vec<Element<Message>> = messages
@@ -359,9 +361,9 @@ fn view_ai_chat<'a>(
 
 fn chat_message<'a>(role: &'a str, content: &'a str, is_dark: bool) -> Element<'a, Message> {
     let blue = if is_dark {
-        colors::BLUE
+        colors::ACCENT
     } else {
-        colors::latte::BLUE
+        colors::latte::ACCENT
     };
     let teal = if is_dark {
         colors::TEAL
@@ -530,4 +532,103 @@ fn parse_ai_citation(line: &str) -> Option<ParsedCitation> {
         location,
         path,
     })
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Context tab — Phase 12 scaffold (Sources / Related / Extracted / Model)
+// ─────────────────────────────────────────────────────────────────────────────
+
+fn view_context(is_dark: bool) -> Element<'static, Message> {
+    let sub0 = if is_dark {
+        colors::SUBTEXT0
+    } else {
+        colors::latte::SUBTEXT0
+    };
+    let surface2 = if is_dark {
+        colors::SURFACE2
+    } else {
+        colors::latte::SURFACE2
+    };
+    let text_color = if is_dark {
+        colors::TEXT
+    } else {
+        colors::latte::TEXT
+    };
+
+    let section_label = |label: &'static str| {
+        text(label)
+            .size(crate::gui::theme::type_scale::UI)
+            .color(text_color)
+    };
+    let stub_label = |label: &'static str| {
+        text(label)
+            .size(crate::gui::theme::type_scale::CAPTION)
+            .color(surface2)
+    };
+
+    let body = column![
+        section_label("Sources"),
+        stub_label("No active query — sources from the next Ask MALD answer will appear here."),
+        Space::new().height(Length::Fixed(crate::gui::theme::spacing::MD)),
+        section_label("Related Notes"),
+        stub_label("Notes linked from the active document or answer."),
+        Space::new().height(Length::Fixed(crate::gui::theme::spacing::MD)),
+        section_label("Extracted"),
+        stub_label("Key concepts, tasks, and follow-up questions auto-extracted from answers."),
+        Space::new().height(Length::Fixed(crate::gui::theme::spacing::MD)),
+        section_label("Model & Retrieval"),
+        text("Model         —")
+            .size(crate::gui::theme::type_scale::CAPTION)
+            .color(sub0),
+        text("Embedding     —")
+            .size(crate::gui::theme::type_scale::CAPTION)
+            .color(sub0),
+        text("Index         —")
+            .size(crate::gui::theme::type_scale::CAPTION)
+            .color(sub0),
+        text("Retrieved     —")
+            .size(crate::gui::theme::type_scale::CAPTION)
+            .color(sub0),
+        text("Confidence    —")
+            .size(crate::gui::theme::type_scale::CAPTION)
+            .color(sub0),
+    ]
+    .spacing(crate::gui::theme::spacing::XS);
+
+    container(scrollable(body).style(theme::scrollable_style))
+        .padding(crate::gui::theme::spacing::MD as u16)
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .into()
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Timeline tab — Phase 12 scaffold (placeholder until journal hook lands)
+// ─────────────────────────────────────────────────────────────────────────────
+
+fn view_timeline(is_dark: bool) -> Element<'static, Message> {
+    let sub0 = if is_dark {
+        colors::SUBTEXT0
+    } else {
+        colors::latte::SUBTEXT0
+    };
+    let surface2 = if is_dark {
+        colors::SURFACE2
+    } else {
+        colors::latte::SURFACE2
+    };
+
+    container(
+        column![
+            text("Timeline")
+                .size(crate::gui::theme::type_scale::UI)
+                .color(sub0),
+            text("Recent edits, captures, and answers will stream here.")
+                .size(crate::gui::theme::type_scale::CAPTION)
+                .color(surface2),
+        ]
+        .spacing(crate::gui::theme::spacing::XS),
+    )
+    .padding(crate::gui::theme::spacing::MD as u16)
+    .into()
 }

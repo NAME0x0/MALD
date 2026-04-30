@@ -106,9 +106,9 @@ fn activity_action_button(
     is_dark: bool,
 ) -> Element<'static, Message> {
     let blue = if is_dark {
-        colors::BLUE
+        colors::ACCENT
     } else {
-        colors::latte::BLUE
+        colors::latte::ACCENT
     };
     let surface0 = if is_dark {
         colors::SURFACE0

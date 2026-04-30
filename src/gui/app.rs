@@ -148,6 +148,9 @@ pub struct MaldApp {
     // ── Daemon ──
     pub daemon_status: DaemonStatus,
 
+    // ── Indexer footer ──
+    pub index_stats: Option<IndexStats>,
+
     // ── Keybindings help ──
     pub keybindings_visible: bool,
 
@@ -318,6 +321,7 @@ impl MaldApp {
             outline: Vec::new(),
 
             daemon_status: DaemonStatus::Unknown,
+            index_stats: None,
             keybindings_visible: false,
             new_note_visible: false,
             new_note_title: String::new(),
@@ -380,12 +384,14 @@ impl MaldApp {
             });
         let font_task = font::load(BOOTSTRAP_FONT_BYTES).map(|_| Message::Noop);
         let daemon_task = IcedTask::perform(load_daemon_status(), Message::DaemonStatusUpdate);
+        let index_stats_task = IcedTask::perform(load_index_stats(), Message::IndexStatsLoaded);
         let task = IcedTask::batch([
             file_tree_task,
             graph_task,
             tasks_task,
             font_task,
             daemon_task,
+            index_stats_task,
         ]);
 
         (app, task)
@@ -1662,10 +1668,13 @@ impl MaldApp {
                             "Reindexed search store: {count} file(s)."
                         ));
 
-                        let mut tasks = vec![IcedTask::done(Message::ToastShow {
-                            level: ToastLevel::Success,
-                            message: format!("Reindexed {count} file(s)"),
-                        })];
+                        let mut tasks = vec![
+                            IcedTask::done(Message::ToastShow {
+                                level: ToastLevel::Success,
+                                message: format!("Reindexed {count} file(s)"),
+                            }),
+                            IcedTask::done(Message::IndexStatsRefresh),
+                        ];
 
                         if !self.search_query.trim().is_empty() {
                             self.search_generation += 1;
@@ -1683,6 +1692,13 @@ impl MaldApp {
                         return IcedTask::done(Message::ErrorOccurred(error));
                     }
                 }
+            }
+            Message::IndexStatsRefresh => {
+                return IcedTask::perform(load_index_stats(), Message::IndexStatsLoaded);
+            }
+            Message::IndexStatsLoaded(stats) => {
+                self.index_stats = stats;
+                return IcedTask::none();
             }
             Message::DoctorCompleted(result) => {
                 self.show_terminal_panel();
@@ -2042,8 +2058,8 @@ impl MaldApp {
                     a: 0.45,
                     ..theme::themed(
                         &self.mald_theme.iced_theme(),
-                        colors::BLUE,
-                        colors::latte::BLUE,
+                        colors::ACCENT,
+                        colors::latte::ACCENT,
                     )
                 }
             } else {
@@ -2181,6 +2197,7 @@ impl MaldApp {
             mald_shell_available: self.mald_shell_available,
             theme,
             modified_paths,
+            index_stats: self.index_stats,
         })
     }
 
@@ -2293,7 +2310,7 @@ impl MaldApp {
         let teal = theme::themed(&iced_theme, colors::TEAL, colors::latte::TEAL);
         let green = theme::themed(&iced_theme, colors::GREEN, colors::latte::GREEN);
         let red = theme::themed(&iced_theme, colors::RED, colors::latte::RED);
-        let blue = theme::themed(&iced_theme, colors::BLUE, colors::latte::BLUE);
+        let blue = theme::themed(&iced_theme, colors::ACCENT, colors::latte::ACCENT);
         let yellow = theme::themed(&iced_theme, colors::YELLOW, colors::latte::YELLOW);
         let lavender = theme::themed(&iced_theme, colors::LAVENDER, colors::latte::LAVENDER);
 
@@ -2903,7 +2920,7 @@ impl MaldApp {
         let sub_color = theme::themed(&iced_theme, colors::SUBTEXT0, colors::latte::SUBTEXT0);
         let sub1_color = theme::themed(&iced_theme, colors::SUBTEXT1, colors::latte::SUBTEXT1);
         let dim_color = theme::themed(&iced_theme, colors::SURFACE2, colors::latte::SURFACE2);
-        let blue = theme::themed(&iced_theme, colors::BLUE, colors::latte::BLUE);
+        let blue = theme::themed(&iced_theme, colors::ACCENT, colors::latte::ACCENT);
         let teal = theme::themed(&iced_theme, colors::TEAL, colors::latte::TEAL);
         let lavender = theme::themed(&iced_theme, colors::LAVENDER, colors::latte::LAVENDER);
         let yellow = theme::themed(&iced_theme, colors::YELLOW, colors::latte::YELLOW);
@@ -3187,7 +3204,7 @@ impl MaldApp {
         let text_color = theme::themed(&iced_theme, colors::TEXT, colors::latte::TEXT);
         let sub0 = theme::themed(&iced_theme, colors::SUBTEXT0, colors::latte::SUBTEXT0);
         let sub1 = theme::themed(&iced_theme, colors::SUBTEXT1, colors::latte::SUBTEXT1);
-        let blue = theme::themed(&iced_theme, colors::BLUE, colors::latte::BLUE);
+        let blue = theme::themed(&iced_theme, colors::ACCENT, colors::latte::ACCENT);
         let lavender = theme::themed(&iced_theme, colors::LAVENDER, colors::latte::LAVENDER);
         let yellow = theme::themed(&iced_theme, colors::YELLOW, colors::latte::YELLOW);
         let query = self.search_query.trim();
@@ -3327,7 +3344,7 @@ impl MaldApp {
         let dim = theme::themed(&iced_theme, colors::SURFACE2, colors::latte::SURFACE2);
         let green = theme::themed(&iced_theme, colors::GREEN, colors::latte::GREEN);
         let yellow = theme::themed(&iced_theme, colors::YELLOW, colors::latte::YELLOW);
-        let blue = theme::themed(&iced_theme, colors::BLUE, colors::latte::BLUE);
+        let blue = theme::themed(&iced_theme, colors::ACCENT, colors::latte::ACCENT);
         let open_count = self.tasks.iter().filter(|task| !task.done).count();
         let done_count = self.tasks.iter().filter(|task| task.done).count();
 
@@ -3791,7 +3808,7 @@ impl MaldApp {
     fn view_with_keybindings<'a>(&'a self, base: Element<'a, Message>) -> Element<'a, Message> {
         let iced_theme = self.mald_theme.iced_theme();
         let text_color = theme::themed(&iced_theme, colors::TEXT, colors::latte::TEXT);
-        let blue = theme::themed(&iced_theme, colors::BLUE, colors::latte::BLUE);
+        let blue = theme::themed(&iced_theme, colors::ACCENT, colors::latte::ACCENT);
 
         let bindings = vec![
             ("Ctrl+P", "Command palette"),
@@ -4761,6 +4778,56 @@ async fn perform_search(query: String) -> Vec<SearchResult> {
             .collect(),
         Err(_) => Vec::new(),
     }
+}
+
+async fn load_index_stats() -> Option<IndexStats> {
+    tokio::task::spawn_blocking(|| {
+        fn count_md(dir: &std::path::Path, total: &mut usize, depth: u32) {
+            if depth > 16 {
+                return;
+            }
+            let Ok(entries) = std::fs::read_dir(dir) else {
+                return;
+            };
+            for entry in entries.flatten() {
+                let Ok(file_type) = entry.file_type() else {
+                    continue;
+                };
+                let path = entry.path();
+                if file_type.is_dir() {
+                    count_md(&path, total, depth + 1);
+                } else if file_type.is_file()
+                    && path
+                        .extension()
+                        .and_then(|e| e.to_str())
+                        .is_some_and(|ext| ext.eq_ignore_ascii_case("md"))
+                {
+                    *total = total.saturating_add(1);
+                }
+            }
+        }
+
+        let kb_dir = crate::fs::mald_home().join("kb");
+        let mut total: usize = 0;
+        if kb_dir.exists() {
+            count_md(&kb_dir, &mut total, 0);
+        }
+
+        let meta_path = crate::fs::mald_home().join("index").join("metadata.db");
+        let indexed = if meta_path.exists() {
+            crate::index::metadata::MetadataStore::open(&meta_path)
+                .ok()
+                .and_then(|m| m.document_count().ok())
+                .unwrap_or(0)
+        } else {
+            0
+        };
+
+        Some(IndexStats { indexed, total })
+    })
+    .await
+    .ok()
+    .flatten()
 }
 
 /// Cached KB file data — read once, used by graph/tasks/backlinks.

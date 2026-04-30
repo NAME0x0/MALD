@@ -11,7 +11,8 @@ use iced_aw::Badge;
 
 use crate::gui::icons;
 use crate::gui::message::{
-    ActivityMode, FileEntry, GraphNode, GuiSettingsForm, Message, SearchResult, TaskItem,
+    ActivityMode, FileEntry, GraphNode, GuiSettingsForm, IndexStats, Message, SearchResult,
+    TaskItem,
 };
 use crate::gui::theme::{self, colors, spacing, themed, type_scale};
 use crate::gui::widgets::empty_state;
@@ -31,6 +32,7 @@ pub struct SidebarData<'a> {
     pub mald_shell_available: bool,
     pub theme: iced::Theme,
     pub modified_paths: HashSet<PathBuf>,
+    pub index_stats: Option<IndexStats>,
 }
 
 /// Render sidebar content based on the current activity mode.
@@ -50,6 +52,7 @@ pub fn view<'a>(data: SidebarData<'a>) -> Element<'a, Message> {
         mald_shell_available,
         theme,
         modified_paths,
+        index_stats,
     } = data;
 
     let header_badge = match mode {
@@ -111,12 +114,48 @@ pub fn view<'a>(data: SidebarData<'a>) -> Element<'a, Message> {
         ),
     };
 
-    let inner = column![header, content].spacing(0);
+    let footer = indexer_footer(index_stats, &theme);
+    let inner = column![
+        header,
+        container(content).width(Length::Fill).height(Length::Fill),
+        footer,
+    ]
+    .spacing(0);
 
     container(inner)
         .width(Length::Fill)
         .height(Length::Fill)
         .style(theme::sidebar_style)
+        .into()
+}
+
+fn indexer_footer<'a>(stats: Option<IndexStats>, theme: &iced::Theme) -> Element<'a, Message> {
+    let sub_color = themed(theme, colors::SUBTEXT0, colors::latte::SUBTEXT0);
+    let dim_color = themed(theme, colors::SURFACE2, colors::latte::SURFACE2);
+    let accent = themed(theme, colors::ACCENT, colors::latte::ACCENT);
+
+    let label = match stats {
+        Some(s) if s.total > 0 => {
+            format!("Indexed: {} files ({}%)", s.indexed, s.percent())
+        }
+        Some(s) => format!("Indexed: {} files", s.indexed),
+        None => "Indexed: —".to_string(),
+    };
+
+    let dot = text("●").size(type_scale::CAPTION).color(match stats {
+        Some(s) if s.total > 0 && s.indexed >= s.total => accent,
+        Some(_) => sub_color,
+        None => dim_color,
+    });
+
+    let line = row![dot, text(label).size(type_scale::CAPTION).color(sub_color),]
+        .spacing(spacing::XS)
+        .align_y(Alignment::Center);
+
+    container(line)
+        .padding([spacing::XS as u16, spacing::SM as u16])
+        .width(Length::Fill)
+        .style(theme::section_header_style)
         .into()
 }
 
@@ -528,7 +567,7 @@ fn view_ai<'a>(
     theme: &iced::Theme,
 ) -> Element<'a, Message> {
     let text_color = themed(theme, colors::TEXT, colors::latte::TEXT);
-    let blue = themed(theme, colors::BLUE, colors::latte::BLUE);
+    let blue = themed(theme, colors::ACCENT, colors::latte::ACCENT);
     let teal = themed(theme, colors::TEAL, colors::latte::TEAL);
     let yellow = themed(theme, colors::YELLOW, colors::latte::YELLOW);
     let sub_color = themed(theme, colors::SUBTEXT0, colors::latte::SUBTEXT0);
