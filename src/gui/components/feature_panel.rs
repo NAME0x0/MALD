@@ -7,10 +7,13 @@ use std::path::PathBuf;
 use std::sync::OnceLock;
 
 use crate::gui::icons;
-use crate::gui::message::{BacklinkEntry, FeaturePanelContent, Message, OutlineEntry};
+use crate::gui::message::{
+    AskMode, BacklinkEntry, ContextSnapshot, FeaturePanelContent, Message, OutlineEntry,
+};
 use crate::gui::theme::{self, colors, layout};
 
 /// Render the feature panel.
+#[allow(clippy::too_many_arguments)]
 pub fn view<'a>(
     content_type: FeaturePanelContent,
     backlinks: &'a [BacklinkEntry],
@@ -18,14 +21,19 @@ pub fn view<'a>(
     ai_messages: &'a [(String, String)],
     ai_input: &'a str,
     ai_streaming: bool,
+    ask_mode: AskMode,
+    context_snapshot: Option<&'a ContextSnapshot>,
+    context_extracting: bool,
     is_dark: bool,
 ) -> Element<'a, Message> {
     let header = panel_header(content_type, is_dark);
     let content: Element<Message> = match content_type {
-        FeaturePanelContent::Context => view_context(is_dark),
+        FeaturePanelContent::Context => view_context(context_snapshot, context_extracting, is_dark),
         FeaturePanelContent::Backlinks => view_backlinks(backlinks, is_dark),
         FeaturePanelContent::Outline => view_outline(outline, is_dark),
-        FeaturePanelContent::AIChat => view_ai_chat(ai_messages, ai_input, ai_streaming, is_dark),
+        FeaturePanelContent::AIChat => {
+            view_ai_chat(ai_messages, ai_input, ai_streaming, ask_mode, is_dark)
+        }
         FeaturePanelContent::Timeline => view_timeline(is_dark),
     };
 
@@ -288,6 +296,7 @@ fn view_ai_chat<'a>(
     messages: &'a [(String, String)],
     input: &'a str,
     streaming: bool,
+    ask_mode: AskMode,
     is_dark: bool,
 ) -> Element<'a, Message> {
     let sub0 = if is_dark {
@@ -352,11 +361,57 @@ fn view_ai_chat<'a>(
         row![input_field]
     };
 
+    let pills = mode_pill_row(ask_mode, is_dark);
+
     column![
         container(chat_area).height(Length::Fill),
+        container(pills).padding([0, theme::spacing::SM as u16]),
         container(input_row).padding(theme::spacing::SM as u16),
     ]
     .into()
+}
+
+fn mode_pill_row(active: AskMode, is_dark: bool) -> Element<'static, Message> {
+    let sub0 = if is_dark {
+        colors::SUBTEXT0
+    } else {
+        colors::latte::SUBTEXT0
+    };
+    let accent = if is_dark {
+        colors::ACCENT
+    } else {
+        colors::latte::ACCENT
+    };
+
+    let pills: Vec<Element<Message>> = AskMode::all()
+        .iter()
+        .map(|mode| {
+            let is_active = *mode == active;
+            let label = text(mode.label())
+                .size(theme::type_scale::CAPTION)
+                .color(if is_active { accent } else { sub0 });
+            button(label)
+                .on_press(Message::AskModeChanged(*mode))
+                .padding([theme::spacing::XS as u16, theme::spacing::SM as u16])
+                .style(move |theme, status| {
+                    let mut style = theme::list_item_style(is_active)(theme, status);
+                    if is_active {
+                        style.border = iced::Border {
+                            color: accent,
+                            width: 1.0,
+                            radius: theme::layout::PANEL_HEADER_HEIGHT.into(),
+                        };
+                    }
+                    style
+                })
+                .into()
+        })
+        .collect();
+
+    row(pills)
+        .spacing(theme::spacing::XS)
+        .align_y(Alignment::Center)
+        .into()
 }
 
 fn chat_message<'a>(role: &'a str, content: &'a str, is_dark: bool) -> Element<'a, Message> {
@@ -538,7 +593,11 @@ fn parse_ai_citation(line: &str) -> Option<ParsedCitation> {
 // Context tab — Phase 12 scaffold (Sources / Related / Extracted / Model)
 // ─────────────────────────────────────────────────────────────────────────────
 
-fn view_context(is_dark: bool) -> Element<'static, Message> {
+fn view_context<'a>(
+    snapshot: Option<&'a ContextSnapshot>,
+    extracting: bool,
+    is_dark: bool,
+) -> Element<'a, Message> {
     let sub0 = if is_dark {
         colors::SUBTEXT0
     } else {
@@ -554,6 +613,11 @@ fn view_context(is_dark: bool) -> Element<'static, Message> {
     } else {
         colors::latte::TEXT
     };
+    let accent = if is_dark {
+        colors::ACCENT
+    } else {
+        colors::latte::ACCENT
+    };
 
     let section_label = |label: &'static str| {
         text(label)
@@ -566,34 +630,95 @@ fn view_context(is_dark: bool) -> Element<'static, Message> {
             .color(surface2)
     };
 
-    let body = column![
+    let mut body = column![
         section_label("Sources"),
-        stub_label("No active query — sources from the next Ask MALD answer will appear here."),
+        stub_label(
+            "Sources for the latest Ask MALD answer surface here once retrieval is wired in."
+        ),
         Space::new().height(Length::Fixed(crate::gui::theme::spacing::MD)),
         section_label("Related Notes"),
         stub_label("Notes linked from the active document or answer."),
         Space::new().height(Length::Fixed(crate::gui::theme::spacing::MD)),
         section_label("Extracted"),
-        stub_label("Key concepts, tasks, and follow-up questions auto-extracted from answers."),
-        Space::new().height(Length::Fixed(crate::gui::theme::spacing::MD)),
-        section_label("Model & Retrieval"),
-        text("Model         —")
-            .size(crate::gui::theme::type_scale::CAPTION)
-            .color(sub0),
-        text("Embedding     —")
-            .size(crate::gui::theme::type_scale::CAPTION)
-            .color(sub0),
-        text("Index         —")
-            .size(crate::gui::theme::type_scale::CAPTION)
-            .color(sub0),
-        text("Retrieved     —")
-            .size(crate::gui::theme::type_scale::CAPTION)
-            .color(sub0),
-        text("Confidence    —")
-            .size(crate::gui::theme::type_scale::CAPTION)
-            .color(sub0),
     ]
     .spacing(crate::gui::theme::spacing::XS);
+
+    if extracting {
+        body = body.push(
+            text("Extracting concepts, tasks, and follow-ups…")
+                .size(crate::gui::theme::type_scale::CAPTION)
+                .color(sub0),
+        );
+    }
+
+    let snap = snapshot.cloned();
+    if let Some(snap) = snap.as_ref() {
+        let extracted_section = |label: &'static str, items: &[String]| -> Element<'a, Message> {
+            let label_el = text(label)
+                .size(crate::gui::theme::type_scale::CAPTION)
+                .color(sub0);
+
+            if items.is_empty() {
+                column![label_el, stub_label("—")]
+                    .spacing(crate::gui::theme::spacing::XS)
+                    .into()
+            } else {
+                let mut col = column![label_el].spacing(crate::gui::theme::spacing::XS);
+                for item in items {
+                    col = col.push(
+                        text(format!("• {item}"))
+                            .size(crate::gui::theme::type_scale::CAPTION)
+                            .color(text_color),
+                    );
+                }
+                col.into()
+            }
+        };
+
+        body = body
+            .push(extracted_section("Key Concepts", &snap.concepts))
+            .push(Space::new().height(Length::Fixed(crate::gui::theme::spacing::SM)))
+            .push(extracted_section("Tasks", &snap.tasks))
+            .push(Space::new().height(Length::Fixed(crate::gui::theme::spacing::SM)))
+            .push(extracted_section("Questions", &snap.questions));
+    } else if !extracting {
+        body = body.push(stub_label(
+            "Key concepts, tasks, and follow-up questions auto-extract once an answer finishes streaming.",
+        ));
+    }
+
+    body = body
+        .push(Space::new().height(Length::Fixed(crate::gui::theme::spacing::MD)))
+        .push(section_label("Model & Retrieval"));
+
+    let _ = accent; // reserved for future retrieval-confidence highlight
+
+    body = body
+        .push(
+            text("Model         —")
+                .size(crate::gui::theme::type_scale::CAPTION)
+                .color(sub0),
+        )
+        .push(
+            text("Embedding     —")
+                .size(crate::gui::theme::type_scale::CAPTION)
+                .color(sub0),
+        )
+        .push(
+            text("Index         —")
+                .size(crate::gui::theme::type_scale::CAPTION)
+                .color(sub0),
+        )
+        .push(
+            text("Retrieved     —")
+                .size(crate::gui::theme::type_scale::CAPTION)
+                .color(sub0),
+        )
+        .push(
+            text("Confidence    —")
+                .size(crate::gui::theme::type_scale::CAPTION)
+                .color(sub0),
+        );
 
     container(scrollable(body).style(theme::scrollable_style))
         .padding(crate::gui::theme::spacing::MD as u16)

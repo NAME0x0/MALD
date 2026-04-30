@@ -151,6 +151,13 @@ pub struct MaldApp {
     // ── Indexer footer ──
     pub index_stats: Option<IndexStats>,
 
+    // ── Ask MALD mode ──
+    pub ask_mode: AskMode,
+
+    // ── Context auto-extract ──
+    pub context_snapshot: Option<ContextSnapshot>,
+    pub context_extracting: bool,
+
     // ── Keybindings help ──
     pub keybindings_visible: bool,
 
@@ -322,6 +329,9 @@ impl MaldApp {
 
             daemon_status: DaemonStatus::Unknown,
             index_stats: None,
+            ask_mode: AskMode::default(),
+            context_snapshot: None,
+            context_extracting: false,
             keybindings_visible: false,
             new_note_visible: false,
             new_note_title: String::new(),
@@ -1066,8 +1076,11 @@ impl MaldApp {
                 self.ai_chat_messages.push(("user".into(), trimmed.clone()));
                 self.ai_chat_input.clear();
                 self.ai_streaming = true;
-                self.ai_stream_receiver =
-                    Some(spawn_ai_chat_stream(trimmed, self.current_kb.clone()));
+                self.ai_stream_receiver = Some(spawn_ai_chat_stream(
+                    trimmed,
+                    self.current_kb.clone(),
+                    self.ask_mode,
+                ));
                 self.ai_chat_messages
                     .push(("assistant".into(), String::new()));
                 // Cap chat history to prevent unbounded memory growth
@@ -1700,6 +1713,22 @@ impl MaldApp {
                 self.index_stats = stats;
                 return IcedTask::none();
             }
+            Message::AskModeChanged(mode) => {
+                self.ask_mode = mode;
+                return IcedTask::none();
+            }
+            Message::ContextExtractCompleted(result) => {
+                self.context_extracting = false;
+                match result {
+                    Ok(snapshot) => {
+                        self.context_snapshot = Some(snapshot);
+                    }
+                    Err(error) => {
+                        tracing::warn!(%error, "context extract failed");
+                    }
+                }
+                return IcedTask::none();
+            }
             Message::DoctorCompleted(result) => {
                 self.show_terminal_panel();
                 match result {
@@ -1734,7 +1763,12 @@ impl MaldApp {
 
             // ── Misc ──
             Message::Tick => {
-                self.poll_runtime_channels();
+                if let Some(answer) = self.poll_runtime_channels() {
+                    return IcedTask::perform(
+                        extract_context_snapshot(answer),
+                        Message::ContextExtractCompleted,
+                    );
+                }
             }
             Message::AnimationTick(_) => {
                 if let Some(anim) = &self.sidebar_animation {
@@ -2106,6 +2140,9 @@ impl MaldApp {
                 &self.ai_chat_messages,
                 &self.ai_chat_input,
                 self.ai_streaming,
+                self.ask_mode,
+                self.context_snapshot.as_ref(),
+                self.context_extracting,
                 self.mald_theme.is_dark,
             );
             main_row = main_row.push(
@@ -3989,9 +4026,9 @@ impl MaldApp {
         self.ensure_terminal_session()
     }
 
-    fn poll_runtime_channels(&mut self) {
+    fn poll_runtime_channels(&mut self) -> Option<String> {
         self.poll_terminal_output();
-        self.poll_ai_stream();
+        self.poll_ai_stream()
     }
 
     fn poll_terminal_output(&mut self) {
@@ -4017,8 +4054,9 @@ impl MaldApp {
         }
     }
 
-    fn poll_ai_stream(&mut self) {
+    fn poll_ai_stream(&mut self) -> Option<String> {
         let mut clear_receiver = false;
+        let mut just_finished = false;
 
         if let Some(receiver) = self.ai_stream_receiver.as_ref() {
             for event in receiver.try_iter() {
@@ -4040,6 +4078,7 @@ impl MaldApp {
                             }
                         }
                         clear_receiver = true;
+                        just_finished = true;
                     }
                     AiStreamEvent::Error(error) => {
                         self.ai_streaming = false;
@@ -4056,6 +4095,22 @@ impl MaldApp {
 
         if clear_receiver {
             self.ai_stream_receiver = None;
+        }
+
+        if just_finished {
+            // Final assistant content for context auto-extract
+            let text = self
+                .ai_chat_messages
+                .last()
+                .filter(|(role, _)| role == "assistant")
+                .map(|(_, content)| content.clone())
+                .filter(|c| !c.trim().is_empty());
+            if text.is_some() {
+                self.context_extracting = true;
+            }
+            text
+        } else {
+            None
         }
     }
 
@@ -4362,9 +4417,17 @@ fn strip_terminal_ansi(text: &str) -> String {
     ansi.replace_all(text, "").into_owned()
 }
 
-fn spawn_ai_chat_stream(message: String, kb_name: String) -> Receiver<AiStreamEvent> {
+fn spawn_ai_chat_stream(
+    message: String,
+    kb_name: String,
+    mode: AskMode,
+) -> Receiver<AiStreamEvent> {
     let (tx, rx) = std::sync::mpsc::channel();
     tokio::spawn(async move {
+        // Mode is currently metadata only — Smart/Deep/Focus all dispatch
+        // vault-only RAG until web fetch (Deep) and scope filtering (Focus)
+        // land in a follow-up. Tag the message for tracing.
+        tracing::debug!(?mode, "AI chat dispatch");
         let _ = perform_ai_chat_stream(message, kb_name, tx).await;
     });
     rx
@@ -4597,6 +4660,85 @@ async fn run_doctor_report() -> Result<DoctorSummary, String> {
         output: report.render_plain(),
         issues: report.issues,
         warnings: report.warnings,
+    })
+}
+
+async fn extract_context_snapshot(answer: String) -> Result<ContextSnapshot, String> {
+    let trimmed = answer.trim();
+    if trimmed.is_empty() {
+        return Ok(ContextSnapshot::default());
+    }
+
+    let config_path = crate::fs::mald_home().join("config").join("config.json");
+    let config = crate::config::manager::ConfigManager::load(&config_path)
+        .map_err(|error| format!("Failed to load config: {error}"))?;
+    let client = crate::ai::ollama::OllamaClient::from_config(&config);
+
+    if !client.is_running().await {
+        return Err("Ollama is not running".into());
+    }
+
+    let model = config
+        .get("ai.default_model")
+        .and_then(|v| v.as_str().map(str::to_string))
+        .unwrap_or_else(|| "llama3.2".to_string());
+
+    let prompt = format!(
+        "Read the following answer and extract structured metadata.\n\n\
+         Reply with ONLY a JSON object — no prose, no code fences, no markdown — \
+         matching exactly this shape:\n\
+         {{\"concepts\": [\"...\"], \"tasks\": [\"...\"], \"questions\": [\"...\"]}}\n\n\
+         Rules:\n\
+         - concepts: 3-6 short noun phrases (1-3 words each) naming the key ideas.\n\
+         - tasks: action items implied by the answer that the reader could do next, \
+         each phrased as a short imperative sentence. Empty array if none.\n\
+         - questions: follow-up questions the reader might want to ask, each phrased \
+         as a single short sentence ending in '?'. Empty array if none.\n\
+         - Each list capped at 6 items.\n\n\
+         Answer to analyze:\n{trimmed}"
+    );
+
+    let raw = client
+        .chat(&model, &prompt)
+        .await
+        .map_err(|error| error.to_string())?;
+
+    parse_context_json(&raw).ok_or_else(|| {
+        format!(
+            "Could not parse extract response as JSON (got {} chars)",
+            raw.len()
+        )
+    })
+}
+
+fn parse_context_json(raw: &str) -> Option<ContextSnapshot> {
+    // Tolerate models that wrap JSON in code fences or stray prose.
+    let start = raw.find('{')?;
+    let end = raw.rfind('}')?;
+    if end <= start {
+        return None;
+    }
+    let json_text = &raw[start..=end];
+    let value: serde_json::Value = serde_json::from_str(json_text).ok()?;
+
+    fn string_array(value: &serde_json::Value, key: &str) -> Vec<String> {
+        value
+            .get(key)
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(str::trim).filter(|s| !s.is_empty()))
+                    .map(str::to_string)
+                    .take(6)
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    Some(ContextSnapshot {
+        concepts: string_array(&value, "concepts"),
+        tasks: string_array(&value, "tasks"),
+        questions: string_array(&value, "questions"),
     })
 }
 

@@ -171,6 +171,12 @@ pub enum Message {
     IndexStatsRefresh,
     IndexStatsLoaded(Option<IndexStats>),
 
+    // ── Ask MALD mode pills ──
+    AskModeChanged(AskMode),
+
+    // ── Context auto-extract ──
+    ContextExtractCompleted(Result<ContextSnapshot, String>),
+
     // ── Misc ──
     Tick,
     AnimationTick(Instant),
@@ -388,6 +394,35 @@ pub enum DaemonStatus {
     Running,
     Stopped,
     Unknown,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct ContextSnapshot {
+    pub concepts: Vec<String>,
+    pub tasks: Vec<String>,
+    pub questions: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum AskMode {
+    #[default]
+    Smart,
+    Deep,
+    Focus,
+}
+
+impl AskMode {
+    pub fn label(&self) -> &'static str {
+        match self {
+            AskMode::Smart => "Smart",
+            AskMode::Deep => "Deep",
+            AskMode::Focus => "Focus: General",
+        }
+    }
+
+    pub fn all() -> &'static [AskMode] {
+        &[AskMode::Smart, AskMode::Deep, AskMode::Focus]
+    }
 }
 
 #[derive(Debug, Clone, Copy, Default)]
