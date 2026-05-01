@@ -1,6 +1,6 @@
 [package]
 name = "mald"
-version = "0.5.4"
+version = "0.5.5"
 edition = "2021"
 authors = ["NAME0x0"]
 description = "Markdown Archive & Localized Daemon — terminal-first PKM with local AI"
