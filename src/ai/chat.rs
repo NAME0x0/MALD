@@ -14,12 +14,16 @@ pub struct CitedSource {
     pub content: String,
     pub start_line: u32,
     pub end_line: u32,
+    pub score: f32,
 }
 
 pub struct PreparedRagChat {
     pub model: String,
+    pub embedding_model: String,
     pub messages: Vec<ChatMessage>,
     pub sources: Vec<CitedSource>,
+    pub used_vector_search: bool,
+    pub retrieval_ms: u128,
 }
 
 /// Retrieve relevant sources for a query, returning chunks with citation info.
@@ -34,6 +38,17 @@ pub async fn retrieve_sources(
     query: &str,
     k: usize,
 ) -> Result<Vec<CitedSource>> {
+    let (sources, _used_vector) = retrieve_sources_meta(client, config, query, k).await?;
+    Ok(sources)
+}
+
+/// Like `retrieve_sources` but also reports whether vector search was used.
+pub async fn retrieve_sources_meta(
+    client: &OllamaClient,
+    config: &ConfigManager,
+    query: &str,
+    k: usize,
+) -> Result<(Vec<CitedSource>, bool)> {
     let index_dir = mald_home().join("index");
     let hnsw_path = index_dir.join("hnsw.bin");
     let meta_path = index_dir.join("metadata.db");
@@ -52,13 +67,14 @@ pub async fn retrieve_sources(
                     let results = index.search(&query_vec, k);
                     used_vector_search = true;
 
-                    for (id, _score) in &results {
+                    for (id, score) in &results {
                         if let Some(chunk) = meta.get_chunk(*id)? {
                             sources.push(CitedSource {
                                 path: chunk.doc_path,
                                 content: chunk.content,
                                 start_line: chunk.start_line,
                                 end_line: chunk.end_line,
+                                score: *score,
                             });
                         }
                     }
@@ -114,6 +130,7 @@ pub async fn retrieve_sources(
                     content: r.snippet.clone(),
                     start_line: 0,
                     end_line: 0,
+                    score: 0.0,
                 });
             }
         } else {
@@ -121,7 +138,7 @@ pub async fn retrieve_sources(
         }
     }
 
-    Ok(sources)
+    Ok((sources, used_vector_search))
 }
 
 /// Build a cited context block from sources, numbering each source.
@@ -149,10 +166,30 @@ pub async fn prepare_rag_chat(
     kb_name: &str,
     session: Option<&ChatSession>,
 ) -> Result<PreparedRagChat> {
+    prepare_rag_chat_with_filter(client, config, query, kb_name, session, None).await
+}
+
+/// Like `prepare_rag_chat` but optionally filters retrieved sources to a path
+/// prefix (used by the GUI's Focus mode to scope retrieval).
+pub async fn prepare_rag_chat_with_filter(
+    client: &OllamaClient,
+    config: &ConfigManager,
+    query: &str,
+    kb_name: &str,
+    session: Option<&ChatSession>,
+    path_prefix: Option<&str>,
+) -> Result<PreparedRagChat> {
     let typed = config.typed();
     let model = typed.ai.default_model.clone();
+    let embedding_model = typed.ai.embedding_model.clone();
 
-    let sources = retrieve_sources(client, config, query, 5).await?;
+    let started = std::time::Instant::now();
+    let (mut sources, used_vector_search) = retrieve_sources_meta(client, config, query, 8).await?;
+    if let Some(prefix) = path_prefix.map(str::trim).filter(|s| !s.is_empty()) {
+        sources.retain(|s| s.path.contains(prefix));
+    }
+    sources.truncate(5);
+    let retrieval_ms = started.elapsed().as_millis();
     let context = build_cited_context(&sources);
 
     let system_prompt = if context.is_empty() {
@@ -187,8 +224,11 @@ pub async fn prepare_rag_chat(
 
     Ok(PreparedRagChat {
         model,
+        embedding_model,
         messages,
         sources,
+        used_vector_search,
+        retrieval_ms,
     })
 }
 

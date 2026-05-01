@@ -51,6 +51,11 @@ enum AiStreamEvent {
     Chunk(String),
     Finished(String),
     Error(String),
+    Meta {
+        meta: RagMeta,
+        sources: Vec<RagSource>,
+        related: Vec<RagSource>,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -157,6 +162,9 @@ pub struct MaldApp {
     // ── Context auto-extract ──
     pub context_snapshot: Option<ContextSnapshot>,
     pub context_extracting: bool,
+
+    // ── Timeline ──
+    pub timeline_entries: Vec<TimelineEntry>,
 
     // ── Keybindings help ──
     pub keybindings_visible: bool,
@@ -332,6 +340,7 @@ impl MaldApp {
             ask_mode: AskMode::default(),
             context_snapshot: None,
             context_extracting: false,
+            timeline_entries: Vec::new(),
             keybindings_visible: false,
             new_note_visible: false,
             new_note_title: String::new(),
@@ -395,6 +404,7 @@ impl MaldApp {
         let font_task = font::load(BOOTSTRAP_FONT_BYTES).map(|_| Message::Noop);
         let daemon_task = IcedTask::perform(load_daemon_status(), Message::DaemonStatusUpdate);
         let index_stats_task = IcedTask::perform(load_index_stats(), Message::IndexStatsLoaded);
+        let timeline_task = IcedTask::perform(load_timeline_entries(), Message::TimelineLoaded);
         let task = IcedTask::batch([
             file_tree_task,
             graph_task,
@@ -402,6 +412,7 @@ impl MaldApp {
             font_task,
             daemon_task,
             index_stats_task,
+            timeline_task,
         ]);
 
         (app, task)
@@ -892,6 +903,7 @@ impl MaldApp {
                 if let Err(e) = result {
                     return IcedTask::done(Message::ErrorOccurred(format!("Save failed: {e}")));
                 }
+                return IcedTask::done(Message::TimelineRefresh);
             }
             Message::EditorExternalOpen => {
                 if let Some(tab) = self.open_tabs.get(self.active_tab) {
@@ -1076,11 +1088,23 @@ impl MaldApp {
                 self.ai_chat_messages.push(("user".into(), trimmed.clone()));
                 self.ai_chat_input.clear();
                 self.ai_streaming = true;
+                let focus_path = if matches!(self.ask_mode, AskMode::Focus) {
+                    self.open_tabs
+                        .get(self.active_tab)
+                        .and_then(|tab| tab.path.parent())
+                        .and_then(|p| p.to_str())
+                        .map(str::to_string)
+                } else {
+                    None
+                };
                 self.ai_stream_receiver = Some(spawn_ai_chat_stream(
                     trimmed,
                     self.current_kb.clone(),
                     self.ask_mode,
+                    focus_path,
                 ));
+                // Reset prior context — fresh meta will arrive shortly
+                self.context_snapshot = None;
                 self.ai_chat_messages
                     .push(("assistant".into(), String::new()));
                 // Cap chat history to prevent unbounded memory growth
@@ -1720,13 +1744,30 @@ impl MaldApp {
             Message::ContextExtractCompleted(result) => {
                 self.context_extracting = false;
                 match result {
-                    Ok(snapshot) => {
-                        self.context_snapshot = Some(snapshot);
+                    Ok(fields) => {
+                        let snapshot = self.context_snapshot.get_or_insert_with(Default::default);
+                        snapshot.concepts = fields.concepts;
+                        snapshot.tasks = fields.tasks;
+                        snapshot.questions = fields.questions;
                     }
                     Err(error) => {
                         tracing::warn!(%error, "context extract failed");
                     }
                 }
+                return IcedTask::none();
+            }
+            Message::TimelineRefresh => {
+                return IcedTask::perform(load_timeline_entries(), Message::TimelineLoaded);
+            }
+            Message::TimelineLoaded(entries) => {
+                self.timeline_entries = entries;
+                return IcedTask::none();
+            }
+            Message::ContextMetaUpdated(meta, sources, related) => {
+                let snapshot = self.context_snapshot.get_or_insert_with(Default::default);
+                snapshot.meta = Some(meta);
+                snapshot.sources = sources;
+                snapshot.related = related;
                 return IcedTask::none();
             }
             Message::DoctorCompleted(result) => {
@@ -2143,6 +2184,7 @@ impl MaldApp {
                 self.ask_mode,
                 self.context_snapshot.as_ref(),
                 self.context_extracting,
+                &self.timeline_entries,
                 self.mald_theme.is_dark,
             );
             main_row = main_row.push(
@@ -4068,6 +4110,16 @@ impl MaldApp {
                             }
                         }
                     }
+                    AiStreamEvent::Meta {
+                        meta,
+                        sources,
+                        related,
+                    } => {
+                        let snapshot = self.context_snapshot.get_or_insert_with(Default::default);
+                        snapshot.meta = Some(meta);
+                        snapshot.sources = sources;
+                        snapshot.related = related;
+                    }
                     AiStreamEvent::Finished(citations) => {
                         self.ai_streaming = false;
                         if !citations.is_empty() {
@@ -4421,14 +4473,12 @@ fn spawn_ai_chat_stream(
     message: String,
     kb_name: String,
     mode: AskMode,
+    focus_path: Option<String>,
 ) -> Receiver<AiStreamEvent> {
     let (tx, rx) = std::sync::mpsc::channel();
     tokio::spawn(async move {
-        // Mode is currently metadata only — Smart/Deep/Focus all dispatch
-        // vault-only RAG until web fetch (Deep) and scope filtering (Focus)
-        // land in a follow-up. Tag the message for tracing.
-        tracing::debug!(?mode, "AI chat dispatch");
-        let _ = perform_ai_chat_stream(message, kb_name, tx).await;
+        tracing::debug!(?mode, ?focus_path, "AI chat dispatch");
+        let _ = perform_ai_chat_stream(message, kb_name, mode, focus_path, tx).await;
     });
     rx
 }
@@ -4663,10 +4713,88 @@ async fn run_doctor_report() -> Result<DoctorSummary, String> {
     })
 }
 
-async fn extract_context_snapshot(answer: String) -> Result<ContextSnapshot, String> {
+async fn load_timeline_entries() -> Vec<TimelineEntry> {
+    tokio::task::spawn_blocking(|| {
+        fn collect(
+            dir: &std::path::Path,
+            kb: &str,
+            depth: u32,
+            now: std::time::SystemTime,
+            out: &mut Vec<TimelineEntry>,
+        ) {
+            if depth > 16 {
+                return;
+            }
+            let Ok(entries) = std::fs::read_dir(dir) else {
+                return;
+            };
+            for entry in entries.flatten() {
+                let path = entry.path();
+                let Ok(file_type) = entry.file_type() else {
+                    continue;
+                };
+                if file_type.is_dir() {
+                    collect(&path, kb, depth + 1, now, out);
+                    continue;
+                }
+                if !file_type.is_file() {
+                    continue;
+                }
+                if path
+                    .extension()
+                    .and_then(|e| e.to_str())
+                    .is_none_or(|ext| !ext.eq_ignore_ascii_case("md"))
+                {
+                    continue;
+                }
+                let modified_secs_ago = entry
+                    .metadata()
+                    .ok()
+                    .and_then(|m| m.modified().ok())
+                    .and_then(|t| now.duration_since(t).ok())
+                    .map(|d| d.as_secs())
+                    .unwrap_or(u64::MAX);
+                let label = path
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .map(str::to_string)
+                    .unwrap_or_default();
+                out.push(TimelineEntry {
+                    path,
+                    label,
+                    kb: kb.to_string(),
+                    modified_secs_ago,
+                });
+            }
+        }
+
+        let kb_root = crate::fs::mald_home().join("kb");
+        if !kb_root.exists() {
+            return Vec::new();
+        }
+        let now = std::time::SystemTime::now();
+        let mut entries: Vec<TimelineEntry> = Vec::new();
+        if let Ok(read_dir) = std::fs::read_dir(&kb_root) {
+            for kb_entry in read_dir.flatten() {
+                if !kb_entry.file_type().is_ok_and(|f| f.is_dir()) {
+                    continue;
+                }
+                let kb_name = kb_entry.file_name().to_string_lossy().into_owned();
+                collect(&kb_entry.path(), &kb_name, 0, now, &mut entries);
+            }
+        }
+        entries.sort_by_key(|e| e.modified_secs_ago);
+        entries.truncate(20);
+        entries
+    })
+    .await
+    .unwrap_or_default()
+}
+
+async fn extract_context_snapshot(answer: String) -> Result<ExtractedFields, String> {
     let trimmed = answer.trim();
     if trimmed.is_empty() {
-        return Ok(ContextSnapshot::default());
+        return Ok(ExtractedFields::default());
     }
 
     let config_path = crate::fs::mald_home().join("config").join("config.json");
@@ -4711,7 +4839,7 @@ async fn extract_context_snapshot(answer: String) -> Result<ContextSnapshot, Str
     })
 }
 
-fn parse_context_json(raw: &str) -> Option<ContextSnapshot> {
+fn parse_context_json(raw: &str) -> Option<ExtractedFields> {
     // Tolerate models that wrap JSON in code fences or stray prose.
     let start = raw.find('{')?;
     let end = raw.rfind('}')?;
@@ -4735,7 +4863,7 @@ fn parse_context_json(raw: &str) -> Option<ContextSnapshot> {
             .unwrap_or_default()
     }
 
-    Some(ContextSnapshot {
+    Some(ExtractedFields {
         concepts: string_array(&value, "concepts"),
         tasks: string_array(&value, "tasks"),
         questions: string_array(&value, "questions"),
@@ -4762,6 +4890,8 @@ async fn load_daemon_status() -> DaemonStatus {
 async fn perform_ai_chat_stream(
     message: String,
     kb_name: String,
+    mode: AskMode,
+    focus_path: Option<String>,
     tx: std::sync::mpsc::Sender<AiStreamEvent>,
 ) -> Result<(), String> {
     let config_path = crate::fs::mald_home().join("config").join("config.json");
@@ -4779,10 +4909,71 @@ async fn perform_ai_chat_stream(
     let mut session = crate::ai::history::latest_session(&kb_name)
         .unwrap_or_else(|| crate::ai::history::ChatSession::new(&kb_name));
 
-    let prepared =
-        crate::ai::chat::prepare_rag_chat(&client, &config, &message, &kb_name, Some(&session))
-            .await
-            .map_err(|error| error.to_string())?;
+    // Focus mode: filter retrieval to a path prefix (active note's directory)
+    let path_filter = match mode {
+        AskMode::Focus => focus_path.as_deref(),
+        _ => None,
+    };
+
+    let mut prepared = crate::ai::chat::prepare_rag_chat_with_filter(
+        &client,
+        &config,
+        &message,
+        &kb_name,
+        Some(&session),
+        path_filter,
+    )
+    .await
+    .map_err(|error| error.to_string())?;
+
+    // Deep mode: fetch web context and inject as additional system message.
+    if matches!(mode, AskMode::Deep) {
+        match fetch_web_context(&message).await {
+            Ok(snippet) if !snippet.is_empty() => {
+                prepared.messages.insert(
+                    1,
+                    crate::ai::ollama::ChatMessage {
+                        role: "system".into(),
+                        content: format!("Additional web context (cite as [W1]+):\n\n{snippet}"),
+                    },
+                );
+            }
+            Ok(_) => {}
+            Err(error) => {
+                tracing::warn!(%error, "Deep mode web fetch failed; continuing with vault only");
+            }
+        }
+    }
+
+    // Surface retrieval metadata + sources up to the GUI ahead of streaming
+    let sources_for_ui: Vec<RagSource> = prepared
+        .sources
+        .iter()
+        .map(|src| RagSource {
+            path: PathBuf::from(&src.path),
+            label: friendly_source_label(&src.path),
+            score: src.score,
+            line_range: if src.start_line > 0 {
+                Some((src.start_line, src.end_line))
+            } else {
+                None
+            },
+        })
+        .collect();
+    let related_for_ui = related_notes_for(&prepared.sources, &kb_name);
+    let confidence_meta = RagMeta {
+        model: prepared.model.clone(),
+        embedding_model: prepared.embedding_model.clone(),
+        retrieved: prepared.sources.len(),
+        retrieval_ms: prepared.retrieval_ms,
+        used_vector: prepared.used_vector_search,
+        mode,
+    };
+    let _ = tx.send(AiStreamEvent::Meta {
+        meta: confidence_meta,
+        sources: sources_for_ui,
+        related: related_for_ui,
+    });
 
     let response = client
         .chat_streaming_with_callback(&prepared.model, &prepared.messages, |chunk| {
@@ -4805,6 +4996,251 @@ async fn perform_ai_chat_stream(
     }
 
     Ok(())
+}
+
+fn friendly_source_label(path: &str) -> String {
+    let p = std::path::Path::new(path);
+    p.file_name()
+        .and_then(|s| s.to_str())
+        .map(str::to_string)
+        .unwrap_or_else(|| path.to_string())
+}
+
+/// Find notes that link to or are linked from the retrieved sources.
+fn related_notes_for(sources: &[crate::ai::chat::CitedSource], kb_name: &str) -> Vec<RagSource> {
+    if sources.is_empty() {
+        return Vec::new();
+    }
+
+    let kb_root = crate::fs::mald_home().join("kb").join(kb_name);
+    if !kb_root.exists() {
+        return Vec::new();
+    }
+
+    let source_stems: std::collections::HashSet<String> = sources
+        .iter()
+        .filter_map(|s| {
+            std::path::Path::new(&s.path)
+                .file_stem()
+                .and_then(|stem| stem.to_str().map(str::to_lowercase))
+        })
+        .collect();
+
+    if source_stems.is_empty() {
+        return Vec::new();
+    }
+
+    let mut seen: std::collections::HashSet<PathBuf> =
+        sources.iter().map(|s| PathBuf::from(&s.path)).collect();
+    let mut related: Vec<RagSource> = Vec::new();
+    let wikilink = regex::Regex::new(r"\[\[([^\]]+?)\]\]").ok();
+
+    fn walk(
+        dir: &std::path::Path,
+        depth: u32,
+        wikilink: &Option<regex::Regex>,
+        source_stems: &std::collections::HashSet<String>,
+        seen: &mut std::collections::HashSet<PathBuf>,
+        out: &mut Vec<RagSource>,
+    ) {
+        if depth > 8 || out.len() >= 8 {
+            return;
+        }
+        let Ok(read_dir) = std::fs::read_dir(dir) else {
+            return;
+        };
+        for entry in read_dir.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                walk(&path, depth + 1, wikilink, source_stems, seen, out);
+                continue;
+            }
+            if path
+                .extension()
+                .and_then(|e| e.to_str())
+                .is_none_or(|ext| !ext.eq_ignore_ascii_case("md"))
+            {
+                continue;
+            }
+            if seen.contains(&path) {
+                continue;
+            }
+            let Ok(content) = std::fs::read_to_string(&path) else {
+                continue;
+            };
+            let Some(re) = wikilink else { continue };
+            let mut hit = false;
+            for cap in re.captures_iter(&content) {
+                if let Some(m) = cap.get(1) {
+                    let target = m
+                        .as_str()
+                        .split('|')
+                        .next()
+                        .unwrap_or_default()
+                        .trim()
+                        .to_lowercase();
+                    if source_stems.contains(&target) {
+                        hit = true;
+                        break;
+                    }
+                }
+            }
+            if hit {
+                seen.insert(path.clone());
+                let label = path
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .map(str::to_string)
+                    .unwrap_or_default();
+                out.push(RagSource {
+                    path,
+                    label,
+                    score: 0.0,
+                    line_range: None,
+                });
+                if out.len() >= 8 {
+                    return;
+                }
+            }
+        }
+    }
+
+    walk(
+        &kb_root,
+        0,
+        &wikilink,
+        &source_stems,
+        &mut seen,
+        &mut related,
+    );
+    related.truncate(6);
+    related
+}
+
+/// Best-effort web context fetch for Deep mode. Uses DuckDuckGo HTML to find
+/// candidate links; fetches the first 2 and returns a trimmed concatenation
+/// of their visible text. Returns empty string on failure rather than erroring
+/// the whole chat — Deep falls back to vault-only retrieval in that case.
+async fn fetch_web_context(query: &str) -> Result<String, String> {
+    let q = query.trim();
+    if q.is_empty() {
+        return Ok(String::new());
+    }
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(8))
+        .user_agent("MALD/0.5 (https://github.com/NAME0x0/MALD)")
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let url = format!("https://duckduckgo.com/html/?q={}", percent_encode_query(q));
+    let body = client
+        .get(&url)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?
+        .text()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let link_re = regex::Regex::new(r#"<a[^>]+class="result__a"[^>]+href="([^"]+)""#)
+        .map_err(|e| e.to_string())?;
+    let mut links: Vec<String> = link_re
+        .captures_iter(&body)
+        .filter_map(|c| c.get(1).map(|m| m.as_str().to_string()))
+        .filter_map(|raw| decode_ddg_redirect(&raw))
+        .filter(|u| u.starts_with("http"))
+        .take(2)
+        .collect();
+    links.dedup();
+
+    let mut combined = String::new();
+    for link in links {
+        match client.get(&link).send().await {
+            Ok(resp) => {
+                if let Ok(text) = resp.text().await {
+                    let visible = strip_html_to_text(&text);
+                    if !visible.is_empty() {
+                        combined.push_str(&format!("--- Web ({link}) ---\n"));
+                        let truncated: String = visible.chars().take(1500).collect();
+                        combined.push_str(&truncated);
+                        combined.push_str("\n\n");
+                    }
+                }
+            }
+            Err(e) => tracing::debug!(%e, "web fetch entry failed"),
+        }
+    }
+    Ok(combined)
+}
+
+fn decode_ddg_redirect(href: &str) -> Option<String> {
+    if let Some(idx) = href.find("uddg=") {
+        let raw = &href[idx + 5..];
+        let end = raw.find('&').unwrap_or(raw.len());
+        Some(percent_decode(&raw[..end]))
+    } else if href.starts_with("http") {
+        Some(href.to_string())
+    } else {
+        None
+    }
+}
+
+fn percent_encode_query(input: &str) -> String {
+    let mut out = String::with_capacity(input.len());
+    for byte in input.bytes() {
+        match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(byte as char);
+            }
+            b' ' => out.push('+'),
+            _ => out.push_str(&format!("%{byte:02X}")),
+        }
+    }
+    out
+}
+
+fn percent_decode(input: &str) -> String {
+    let bytes = input.as_bytes();
+    let mut out: Vec<u8> = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'%' if i + 2 < bytes.len() => {
+                let hex = &input[i + 1..i + 3];
+                if let Ok(byte) = u8::from_str_radix(hex, 16) {
+                    out.push(byte);
+                    i += 3;
+                    continue;
+                }
+                out.push(bytes[i]);
+                i += 1;
+            }
+            b'+' => {
+                out.push(b' ');
+                i += 1;
+            }
+            other => {
+                out.push(other);
+                i += 1;
+            }
+        }
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
+fn strip_html_to_text(html: &str) -> String {
+    // The Rust `regex` crate doesn't support backreferences, so strip the
+    // open/close pairs for script/style separately rather than `</\1>`.
+    let script_re = regex::Regex::new(r"(?is)<script[^>]*>.*?</script>").expect("script regex");
+    let style_re = regex::Regex::new(r"(?is)<style[^>]*>.*?</style>").expect("style regex");
+    let tag_re = regex::Regex::new(r"<[^>]+>").expect("tag regex");
+    let ws_re = regex::Regex::new(r"\s+").expect("ws regex");
+
+    let no_scripts = script_re.replace_all(html, "");
+    let no_styles = style_re.replace_all(&no_scripts, "");
+    let no_tags = tag_re.replace_all(&no_styles, " ");
+    let collapsed = ws_re.replace_all(&no_tags, " ");
+    collapsed.trim().to_string()
 }
 
 async fn load_file_tree_for(kb_name: Option<String>) -> Vec<FileEntry> {

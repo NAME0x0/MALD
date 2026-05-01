@@ -175,7 +175,12 @@ pub enum Message {
     AskModeChanged(AskMode),
 
     // ── Context auto-extract ──
-    ContextExtractCompleted(Result<ContextSnapshot, String>),
+    ContextExtractCompleted(Result<ExtractedFields, String>),
+    ContextMetaUpdated(RagMeta, Vec<RagSource>, Vec<RagSource>),
+
+    // ── Timeline ──
+    TimelineRefresh,
+    TimelineLoaded(Vec<TimelineEntry>),
 
     // ── Misc ──
     Tick,
@@ -396,8 +401,44 @@ pub enum DaemonStatus {
     Unknown,
 }
 
+#[derive(Debug, Clone)]
+pub struct RagSource {
+    pub path: PathBuf,
+    pub label: String,
+    pub score: f32,
+    pub line_range: Option<(u32, u32)>,
+}
+
+#[derive(Debug, Clone)]
+pub struct TimelineEntry {
+    pub path: PathBuf,
+    pub label: String,
+    pub kb: String,
+    pub modified_secs_ago: u64,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct RagMeta {
+    pub model: String,
+    pub embedding_model: String,
+    pub retrieved: usize,
+    pub retrieval_ms: u128,
+    pub used_vector: bool,
+    pub mode: AskMode,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct ExtractedFields {
+    pub concepts: Vec<String>,
+    pub tasks: Vec<String>,
+    pub questions: Vec<String>,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct ContextSnapshot {
+    pub sources: Vec<RagSource>,
+    pub related: Vec<RagSource>,
+    pub meta: Option<RagMeta>,
     pub concepts: Vec<String>,
     pub tasks: Vec<String>,
     pub questions: Vec<String>,

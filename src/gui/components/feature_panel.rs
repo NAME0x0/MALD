@@ -8,7 +8,8 @@ use std::sync::OnceLock;
 
 use crate::gui::icons;
 use crate::gui::message::{
-    AskMode, BacklinkEntry, ContextSnapshot, FeaturePanelContent, Message, OutlineEntry,
+    AskMode, BacklinkEntry, ContextSnapshot, FeaturePanelContent, Message, OutlineEntry, RagSource,
+    TimelineEntry,
 };
 use crate::gui::theme::{self, colors, layout};
 
@@ -24,6 +25,7 @@ pub fn view<'a>(
     ask_mode: AskMode,
     context_snapshot: Option<&'a ContextSnapshot>,
     context_extracting: bool,
+    timeline: &'a [TimelineEntry],
     is_dark: bool,
 ) -> Element<'a, Message> {
     let header = panel_header(content_type, is_dark);
@@ -34,7 +36,7 @@ pub fn view<'a>(
         FeaturePanelContent::AIChat => {
             view_ai_chat(ai_messages, ai_input, ai_streaming, ask_mode, is_dark)
         }
-        FeaturePanelContent::Timeline => view_timeline(is_dark),
+        FeaturePanelContent::Timeline => view_timeline(timeline, is_dark),
     };
 
     let inner = column![header, content].spacing(0);
@@ -630,18 +632,76 @@ fn view_context<'a>(
             .color(surface2)
     };
 
-    let mut body = column![
-        section_label("Sources"),
-        stub_label(
-            "Sources for the latest Ask MALD answer surface here once retrieval is wired in."
-        ),
-        Space::new().height(Length::Fixed(crate::gui::theme::spacing::MD)),
-        section_label("Related Notes"),
-        stub_label("Notes linked from the active document or answer."),
-        Space::new().height(Length::Fixed(crate::gui::theme::spacing::MD)),
-        section_label("Extracted"),
-    ]
-    .spacing(crate::gui::theme::spacing::XS);
+    let snap_for_sources = snapshot;
+
+    let render_source_row = |source: &RagSource| -> Element<'a, Message> {
+        let path = source.path.clone();
+        let mut label_text = source.label.clone();
+        if let Some((start, end)) = source.line_range {
+            label_text.push_str(&format!(":L{start}-{end}"));
+        }
+        let score_text = if source.score > 0.0 {
+            format!("{:.2}", source.score)
+        } else {
+            "fts".to_string()
+        };
+        let row_inner = row![
+            text(label_text)
+                .size(crate::gui::theme::type_scale::CAPTION)
+                .color(text_color),
+            Space::new().width(Length::Fill),
+            text(score_text)
+                .size(crate::gui::theme::type_scale::CAPTION)
+                .color(accent),
+        ]
+        .spacing(crate::gui::theme::spacing::XS)
+        .align_y(Alignment::Center);
+
+        button(row_inner)
+            .on_press(Message::AiChatCitationClick(path))
+            .padding([
+                crate::gui::theme::spacing::XS as u16,
+                crate::gui::theme::spacing::SM as u16,
+            ])
+            .width(Length::Fill)
+            .style(theme::list_item_style(false))
+            .into()
+    };
+
+    let mut body = column![section_label("Sources")].spacing(crate::gui::theme::spacing::XS);
+
+    let sources_slice = snap_for_sources
+        .map(|s| s.sources.as_slice())
+        .unwrap_or(&[]);
+    if sources_slice.is_empty() {
+        body = body.push(stub_label(
+            "Sources for the latest Ask MALD answer surface here after the next chat.",
+        ));
+    } else {
+        for source in sources_slice {
+            body = body.push(render_source_row(source));
+        }
+    }
+
+    body = body
+        .push(Space::new().height(Length::Fixed(crate::gui::theme::spacing::MD)))
+        .push(section_label("Related Notes"));
+    let related_slice = snap_for_sources
+        .map(|s| s.related.as_slice())
+        .unwrap_or(&[]);
+    if related_slice.is_empty() {
+        body = body.push(stub_label(
+            "Notes that link to or are linked from the cited sources.",
+        ));
+    } else {
+        for source in related_slice {
+            body = body.push(render_source_row(source));
+        }
+    }
+
+    body = body
+        .push(Space::new().height(Length::Fixed(crate::gui::theme::spacing::MD)))
+        .push(section_label("Extracted"));
 
     if extracting {
         body = body.push(
@@ -691,34 +751,63 @@ fn view_context<'a>(
         .push(Space::new().height(Length::Fixed(crate::gui::theme::spacing::MD)))
         .push(section_label("Model & Retrieval"));
 
-    let _ = accent; // reserved for future retrieval-confidence highlight
+    let meta = snapshot.and_then(|s| s.meta.as_ref());
+    let stat_row =
+        |label: &'static str, value: String, accent_value: bool| -> Element<'a, Message> {
+            let value_color = if accent_value { accent } else { text_color };
+            row![
+                text(label)
+                    .size(crate::gui::theme::type_scale::CAPTION)
+                    .color(sub0),
+                Space::new().width(Length::Fill),
+                text(value)
+                    .size(crate::gui::theme::type_scale::CAPTION)
+                    .color(value_color),
+            ]
+            .align_y(Alignment::Center)
+            .into()
+        };
 
-    body = body
-        .push(
-            text("Model         —")
-                .size(crate::gui::theme::type_scale::CAPTION)
-                .color(sub0),
-        )
-        .push(
-            text("Embedding     —")
-                .size(crate::gui::theme::type_scale::CAPTION)
-                .color(sub0),
-        )
-        .push(
-            text("Index         —")
-                .size(crate::gui::theme::type_scale::CAPTION)
-                .color(sub0),
-        )
-        .push(
-            text("Retrieved     —")
-                .size(crate::gui::theme::type_scale::CAPTION)
-                .color(sub0),
-        )
-        .push(
-            text("Confidence    —")
-                .size(crate::gui::theme::type_scale::CAPTION)
-                .color(sub0),
-        );
+    if let Some(meta) = meta {
+        let confidence_pct = if meta.retrieved == 0 {
+            0
+        } else {
+            let avg = snapshot
+                .map(|s| {
+                    let scored: Vec<f32> = s.sources.iter().map(|src| src.score).collect();
+                    if scored.is_empty() {
+                        0.0
+                    } else {
+                        scored.iter().sum::<f32>() / scored.len() as f32
+                    }
+                })
+                .unwrap_or(0.0);
+            (avg.clamp(0.0, 1.0) * 100.0).round() as u32
+        };
+        body = body
+            .push(stat_row("Model", meta.model.clone(), false))
+            .push(stat_row("Embedding", meta.embedding_model.clone(), false))
+            .push(stat_row(
+                "Index",
+                if meta.used_vector { "HNSW" } else { "FTS" }.to_string(),
+                meta.used_vector,
+            ))
+            .push(stat_row(
+                "Retrieved",
+                format!("{} chunks in {}ms", meta.retrieved, meta.retrieval_ms),
+                false,
+            ))
+            .push(stat_row("Mode", meta.mode.label().to_string(), true))
+            .push(stat_row("Confidence", format!("{confidence_pct}%"), true));
+    } else {
+        body = body
+            .push(stat_row("Model", "—".to_string(), false))
+            .push(stat_row("Embedding", "—".to_string(), false))
+            .push(stat_row("Index", "—".to_string(), false))
+            .push(stat_row("Retrieved", "—".to_string(), false))
+            .push(stat_row("Mode", "—".to_string(), false))
+            .push(stat_row("Confidence", "—".to_string(), false));
+    }
 
     container(scrollable(body).style(theme::scrollable_style))
         .padding(crate::gui::theme::spacing::MD as u16)
@@ -731,7 +820,7 @@ fn view_context<'a>(
 // Timeline tab — Phase 12 scaffold (placeholder until journal hook lands)
 // ─────────────────────────────────────────────────────────────────────────────
 
-fn view_timeline(is_dark: bool) -> Element<'static, Message> {
+fn view_timeline<'a>(entries: &'a [TimelineEntry], is_dark: bool) -> Element<'a, Message> {
     let sub0 = if is_dark {
         colors::SUBTEXT0
     } else {
@@ -742,18 +831,95 @@ fn view_timeline(is_dark: bool) -> Element<'static, Message> {
     } else {
         colors::latte::SURFACE2
     };
+    let text_color = if is_dark {
+        colors::TEXT
+    } else {
+        colors::latte::TEXT
+    };
+    let accent = if is_dark {
+        colors::ACCENT
+    } else {
+        colors::latte::ACCENT
+    };
 
-    container(
-        column![
-            text("Timeline")
-                .size(crate::gui::theme::type_scale::UI)
-                .color(sub0),
-            text("Recent edits, captures, and answers will stream here.")
+    if entries.is_empty() {
+        return container(
+            column![
+                text("No recent edits")
+                    .size(crate::gui::theme::type_scale::UI)
+                    .color(sub0),
+                text("Notes you edit will surface here ranked by recency.")
+                    .size(crate::gui::theme::type_scale::CAPTION)
+                    .color(surface2),
+            ]
+            .spacing(crate::gui::theme::spacing::XS),
+        )
+        .padding(crate::gui::theme::spacing::MD as u16)
+        .into();
+    }
+
+    let items: Vec<Element<Message>> = entries
+        .iter()
+        .map(|entry| {
+            let inner = row![
+                text(&entry.label)
+                    .size(crate::gui::theme::type_scale::CAPTION)
+                    .color(text_color),
+                Space::new().width(Length::Fill),
+                text(format_relative_time(entry.modified_secs_ago))
+                    .size(crate::gui::theme::type_scale::CAPTION)
+                    .color(accent),
+            ]
+            .spacing(crate::gui::theme::spacing::XS)
+            .align_y(Alignment::Center);
+            let kb_label = text(format!("{} · {}", entry.kb, entry.path.display()))
                 .size(crate::gui::theme::type_scale::CAPTION)
-                .color(surface2),
-        ]
-        .spacing(crate::gui::theme::spacing::XS),
+                .color(sub0);
+            button(
+                column![inner, kb_label]
+                    .spacing(2)
+                    .padding(crate::gui::theme::spacing::XS as u16),
+            )
+            .on_press(Message::EditorOpen(entry.path.clone()))
+            .width(Length::Fill)
+            .style(theme::list_item_style(false))
+            .into()
+        })
+        .collect();
+
+    scrollable(
+        column(items)
+            .spacing(crate::gui::theme::spacing::XS)
+            .padding(crate::gui::theme::spacing::SM as u16),
     )
-    .padding(crate::gui::theme::spacing::MD as u16)
+    .height(Length::Fill)
+    .style(theme::scrollable_style)
     .into()
+}
+
+fn format_relative_time(secs: u64) -> String {
+    if secs == u64::MAX {
+        return "—".to_string();
+    }
+    if secs < 60 {
+        return "just now".to_string();
+    }
+    let minutes = secs / 60;
+    if minutes < 60 {
+        return format!("{minutes}m ago");
+    }
+    let hours = minutes / 60;
+    if hours < 24 {
+        return format!("{hours}h ago");
+    }
+    let days = hours / 24;
+    if days < 30 {
+        return format!("{days}d ago");
+    }
+    let months = days / 30;
+    if months < 12 {
+        return format!("{months}mo ago");
+    }
+    let years = months / 12;
+    format!("{years}y ago")
 }
