@@ -1,5 +1,7 @@
 # Rust
 /target/
+# Alt cargo target dirs used by ad-hoc validation runs
+/target-*/
 
 # IDEs
 .vscode/
@@ -10,10 +12,14 @@
 
 # MALD specific
 .mald/
+# Sandbox MALD homes used during smoke / self-test / lock-check / UX runs
+.mald-*/
 
 # OS generated
 .DS_Store
 Thumbs.db
+# Windows accidental NUL redirect leftover
+nul
 
 # Logs
 *.log
@@ -28,3 +34,10 @@ logs/
 models/
 *.gguf
 *.safetensors
+
+# Claude Code harness scratch state (not source)
+.claude/scheduled_tasks.lock
+
+# Swarm coordination scratch (per-session, regenerated on demand)
+/swarm/
+progress.txt

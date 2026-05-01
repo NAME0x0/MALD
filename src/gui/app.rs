@@ -280,7 +280,7 @@ impl MaldApp {
 
             feature_panel_visible: false,
             feature_panel_width: FEATURE_PANEL_DEFAULT_WIDTH,
-            feature_panel_content: FeaturePanelContent::Backlinks,
+            feature_panel_content: FeaturePanelContent::Context,
 
             top_search_query: String::new(),
             top_search_focused: false,
