@@ -757,6 +757,46 @@ fn parse_sidebar_ai_citation(line: &str) -> Option<SidebarAiCitation> {
 // Settings view
 // ─────────────────────────────────────────────────────────────────────────────
 
+/// Recommended Ollama models — current generation. Clickable rows that fill
+/// the Model field.
+fn model_recommendations<'a>(theme: &iced::Theme) -> Element<'a, Message> {
+    let sub_color = themed(theme, colors::SUBTEXT0, colors::latte::SUBTEXT0);
+    let accent = themed(theme, colors::ACCENT, colors::latte::ACCENT);
+
+    let pick = |name: &'static str| -> Element<'a, Message> {
+        button(
+            text(name)
+                .size(type_scale::CAPTION)
+                .color(accent)
+                .font(iced::Font::MONOSPACE),
+        )
+        .on_press(Message::SettingChanged(
+            "ai.default_model".into(),
+            name.into(),
+        ))
+        .padding([2, spacing::SM as u16])
+        .style(theme::secondary_button_style)
+        .into()
+    };
+
+    column![
+        text("Recommended (paste exact tag, then Save):")
+            .size(type_scale::CAPTION)
+            .color(sub_color),
+        row![
+            pick("gemma3:4b"),
+            pick("gemma3:1b"),
+            pick("qwen3:4b"),
+            pick("qwen3:1.7b"),
+            pick("llama3.2:3b"),
+        ]
+        .spacing(spacing::XS)
+        .wrap(),
+    ]
+    .spacing(spacing::XS)
+    .into()
+}
+
 fn settings_card<'a>(
     content: impl Into<Element<'a, Message>>,
     surface: iced::Color,
@@ -764,6 +804,7 @@ fn settings_card<'a>(
 ) -> Element<'a, Message> {
     container(content)
         .padding(spacing::MD as u16)
+        .width(Length::Fill)
         .style(move |_theme| container::Style {
             background: Some(iced::Background::Color(surface)),
             border: iced::Border {
@@ -984,7 +1025,8 @@ pub fn view_settings<'a>(
                 text("These values stay local. MALD uses them when you ask AI to work against your active space.")
                     .size(type_scale::CAPTION)
                     .color(sub_color),
-                field("Model", "llama3.2", "ai.default_model", &settings.ai_model),
+                field("Model", "gemma3:4b", "ai.default_model", &settings.ai_model),
+                model_recommendations(theme),
                 field(
                     "Ollama URL",
                     "http://localhost:11434",

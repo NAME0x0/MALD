@@ -80,7 +80,11 @@ pub struct MaldApp {
     // ── Feature panel ──
     pub feature_panel_visible: bool,
     pub feature_panel_width: f32,
+    pub feature_panel_resizing: bool,
     pub feature_panel_content: FeaturePanelContent,
+    /// Cached window inner width — updated on Window::Resized; used to compute
+    /// feature panel width from cursor X (panel anchored on right).
+    pub window_width: f32,
 
     // ── Top search ──
     pub top_search_query: String,
@@ -278,7 +282,9 @@ impl MaldApp {
 
             feature_panel_visible: true,
             feature_panel_width: FEATURE_PANEL_DEFAULT_WIDTH,
+            feature_panel_resizing: false,
             feature_panel_content: FeaturePanelContent::Context,
+            window_width: 1280.0,
 
             top_search_query: String::new(),
             top_search_focused: false,
@@ -435,10 +441,15 @@ impl MaldApp {
                 handle_key_press(key, modifiers)
             }
             iced::Event::Mouse(mouse::Event::CursorMoved { position }) => {
+                // Drives both sidebar (left) and feature panel (right) resize.
+                // Each handler ignores the message unless its own resize flag is set.
                 Some(Message::SidebarResize(position.x))
             }
             iced::Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left)) => {
                 Some(Message::SidebarResizeEnd)
+            }
+            iced::Event::Window(iced::window::Event::Resized(size)) => {
+                Some(Message::WindowResized(size.width, size.height))
             }
             _ => None,
         });
@@ -560,16 +571,37 @@ impl MaldApp {
                 self.sidebar_animation = None;
                 self.sidebar_visible = true;
             }
-            Message::SidebarResize(width) => {
+            Message::SidebarResize(cursor_x) => {
+                // CursorMoved fan-out: drive sidebar (left-anchored) and
+                // feature panel (right-anchored) resizes from a single event.
                 if self.sidebar_resizing {
                     let adjusted_width =
-                        width - layout::ACTIVITY_BAR_WIDTH - SIDEBAR_RESIZE_HANDLE_WIDTH / 2.0;
+                        cursor_x - layout::ACTIVITY_BAR_WIDTH - SIDEBAR_RESIZE_HANDLE_WIDTH / 2.0;
                     self.sidebar_width =
                         adjusted_width.clamp(layout::SIDEBAR_MIN_WIDTH, layout::SIDEBAR_MAX_WIDTH);
+                }
+                if self.feature_panel_resizing {
+                    let panel_width = (self.window_width - cursor_x).clamp(
+                        layout::FEATURE_PANEL_MIN_WIDTH,
+                        layout::FEATURE_PANEL_MAX_WIDTH,
+                    );
+                    self.feature_panel_width = panel_width;
                 }
             }
             Message::SidebarResizeEnd => {
                 self.sidebar_resizing = false;
+                self.feature_panel_resizing = false;
+            }
+            Message::FeaturePanelResizeStart => {
+                self.feature_panel_resizing = true;
+                self.feature_panel_animation = None;
+                self.feature_panel_visible = true;
+            }
+            Message::FeaturePanelResizeEnd => {
+                self.feature_panel_resizing = false;
+            }
+            Message::WindowResized(w, _h) => {
+                self.window_width = w;
             }
 
             // ── Feature Panel ──
@@ -2205,6 +2237,40 @@ impl MaldApp {
                 &self.timeline_entries,
                 self.mald_theme.is_dark,
             );
+
+            // Left-edge resize handle for the feature panel.
+            let panel_handle_color = if self.feature_panel_resizing {
+                iced::Color {
+                    a: 0.45,
+                    ..theme::themed(
+                        &self.mald_theme.iced_theme(),
+                        colors::ACCENT,
+                        colors::latte::ACCENT,
+                    )
+                }
+            } else {
+                iced::Color {
+                    a: 0.14,
+                    ..theme::themed(
+                        &self.mald_theme.iced_theme(),
+                        colors::SURFACE2,
+                        colors::latte::SURFACE2,
+                    )
+                }
+            };
+            let panel_resize_handle = mouse_area(
+                container(Space::new())
+                    .width(Length::Fixed(SIDEBAR_RESIZE_HANDLE_WIDTH))
+                    .height(Length::Fill)
+                    .style(move |_theme| container::Style {
+                        background: Some(iced::Background::Color(panel_handle_color)),
+                        ..Default::default()
+                    }),
+            )
+            .on_press(Message::FeaturePanelResizeStart)
+            .interaction(mouse::Interaction::ResizingHorizontally);
+
+            main_row = main_row.push(panel_resize_handle);
             main_row = main_row.push(
                 container(panel)
                     .width(Length::Fixed(feature_panel_width))

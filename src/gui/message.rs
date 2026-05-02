@@ -22,6 +22,9 @@ pub enum Message {
     FeaturePanelToggle,
     FeaturePanelSetContent(FeaturePanelContent),
     FeaturePanelResize(f32),
+    FeaturePanelResizeStart,
+    FeaturePanelResizeEnd,
+    WindowResized(f32, f32),
 
     // ── Top Search ──
     TopSearchFocus,

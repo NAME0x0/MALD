@@ -177,7 +177,7 @@ pub mod layout {
     pub const SEARCH_BAR_HEIGHT: f32 = 44.0;
     pub const STATUS_BAR_HEIGHT: f32 = 24.0;
     pub const SIDEBAR_DEFAULT_WIDTH: f32 = 250.0;
-    pub const FEATURE_PANEL_DEFAULT_WIDTH: f32 = 300.0;
+    pub const FEATURE_PANEL_DEFAULT_WIDTH: f32 = 380.0;
     pub const TERMINAL_DEFAULT_HEIGHT: f32 = 200.0;
     pub const MODAL_WIDTH: f32 = 600.0;
     pub const MODAL_VERTICAL_PADDING: f32 = 100.0;

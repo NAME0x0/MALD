@@ -103,18 +103,24 @@ fn panel_header(content_type: FeaturePanelContent, is_dark: bool) -> Element<'st
         ])
         .style(theme::close_button_style);
 
+    // Tab strip horizontally scrollable so narrow panel widths don't clip
+    // the rightmost tab labels.
+    let tab_scroll = scrollable(row(tabs).spacing(crate::gui::theme::spacing::XS))
+        .direction(iced::widget::scrollable::Direction::Horizontal(
+            iced::widget::scrollable::Scrollbar::new()
+                .width(0)
+                .scroller_width(0),
+        ))
+        .width(Length::Fill);
+
     container(
-        row![
-            row(tabs).spacing(crate::gui::theme::spacing::XS),
-            Space::new().width(Length::Fill),
-            close_btn,
-        ]
-        .spacing(crate::gui::theme::spacing::SM)
-        .padding([
-            crate::gui::theme::spacing::XS as u16,
-            crate::gui::theme::spacing::SM as u16,
-        ])
-        .align_y(Alignment::Center),
+        row![container(tab_scroll).width(Length::Fill), close_btn,]
+            .spacing(crate::gui::theme::spacing::SM)
+            .padding([
+                crate::gui::theme::spacing::XS as u16,
+                crate::gui::theme::spacing::SM as u16,
+            ])
+            .align_y(Alignment::Center),
     )
     .height(Length::Fixed(layout::PANEL_HEADER_HEIGHT))
     .style(theme::section_header_style)
