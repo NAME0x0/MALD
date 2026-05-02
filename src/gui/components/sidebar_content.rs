@@ -757,8 +757,10 @@ fn parse_sidebar_ai_citation(line: &str) -> Option<SidebarAiCitation> {
 // Settings view
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Recommended Ollama models — current generation. Clickable rows that fill
-/// the Model field.
+/// Recommended Ollama models — current generation as of May 2026.
+/// Verified against ollama.com/library: Gemma 4 (gemma4:e2b/e4b, released
+/// Apr 2026) and Qwen 3.5 (qwen3.5:0.8b/2b/4b/9b, multimodal w/ 256K ctx).
+/// Clicking a pick fills the Model field via `ai.default_model`.
 fn model_recommendations<'a>(theme: &iced::Theme) -> Element<'a, Message> {
     let sub_color = themed(theme, colors::SUBTEXT0, colors::latte::SUBTEXT0);
     let accent = themed(theme, colors::ACCENT, colors::latte::ACCENT);
@@ -780,18 +782,21 @@ fn model_recommendations<'a>(theme: &iced::Theme) -> Element<'a, Message> {
     };
 
     column![
-        text("Recommended (paste exact tag, then Save):")
+        text("Recommended (click to set, then Save):")
             .size(type_scale::CAPTION)
             .color(sub_color),
         row![
-            pick("gemma3:4b"),
-            pick("gemma3:1b"),
-            pick("qwen3:4b"),
-            pick("qwen3:1.7b"),
-            pick("llama3.2:3b"),
+            pick("gemma4:e4b"),
+            pick("gemma4:e2b"),
+            pick("qwen3.5:9b"),
+            pick("qwen3.5:4b"),
+            pick("qwen3.5:2b"),
         ]
         .spacing(spacing::XS)
         .wrap(),
+        text("Gemma 4 (Apr 2026) and Qwen 3.5 are the current Ollama generations. Run `ollama pull <tag>` first.")
+            .size(type_scale::CAPTION)
+            .color(sub_color),
     ]
     .spacing(spacing::XS)
     .into()
@@ -1025,7 +1030,7 @@ pub fn view_settings<'a>(
                 text("These values stay local. MALD uses them when you ask AI to work against your active space.")
                     .size(type_scale::CAPTION)
                     .color(sub_color),
-                field("Model", "gemma3:4b", "ai.default_model", &settings.ai_model),
+                field("Model", "gemma4:e4b", "ai.default_model", &settings.ai_model),
                 model_recommendations(theme),
                 field(
                     "Ollama URL",
