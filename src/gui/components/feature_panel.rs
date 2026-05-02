@@ -622,19 +622,21 @@ fn view_context<'a>(
     };
 
     let section_label = |label: &'static str| {
-        text(label)
+        text(format!("── {label} ──"))
             .size(crate::gui::theme::type_scale::UI)
-            .color(text_color)
+            .color(sub0)
+            .font(iced::Font::MONOSPACE)
     };
     let stub_label = |label: &'static str| {
         text(label)
             .size(crate::gui::theme::type_scale::CAPTION)
             .color(surface2)
+            .font(iced::Font::MONOSPACE)
     };
 
     let snap_for_sources = snapshot;
 
-    let render_source_row = |source: &RagSource| -> Element<'a, Message> {
+    let render_source_row = |idx: usize, source: &RagSource| -> Element<'a, Message> {
         let path = source.path.clone();
         let mut label_text = source.label.clone();
         if let Some((start, end)) = source.line_range {
@@ -645,14 +647,22 @@ fn view_context<'a>(
         } else {
             "fts".to_string()
         };
+        let prefix = format!("[{}]", idx + 1);
         let row_inner = row![
+            text(prefix)
+                .size(crate::gui::theme::type_scale::CAPTION)
+                .color(accent)
+                .font(iced::Font::MONOSPACE),
+            Space::new().width(crate::gui::theme::spacing::XS),
             text(label_text)
                 .size(crate::gui::theme::type_scale::CAPTION)
-                .color(text_color),
+                .color(text_color)
+                .font(iced::Font::MONOSPACE),
             Space::new().width(Length::Fill),
             text(score_text)
                 .size(crate::gui::theme::type_scale::CAPTION)
-                .color(accent),
+                .color(accent)
+                .font(iced::Font::MONOSPACE),
         ]
         .spacing(crate::gui::theme::spacing::XS)
         .align_y(Alignment::Center);
@@ -678,8 +688,8 @@ fn view_context<'a>(
             "Sources for the latest Ask MALD answer surface here after the next chat.",
         ));
     } else {
-        for source in sources_slice {
-            body = body.push(render_source_row(source));
+        for (idx, source) in sources_slice.iter().enumerate() {
+            body = body.push(render_source_row(idx, source));
         }
     }
 
@@ -694,8 +704,8 @@ fn view_context<'a>(
             "Notes that link to or are linked from the cited sources.",
         ));
     } else {
-        for source in related_slice {
-            body = body.push(render_source_row(source));
+        for (idx, source) in related_slice.iter().enumerate() {
+            body = body.push(render_source_row(idx, source));
         }
     }
 

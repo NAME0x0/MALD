@@ -164,6 +164,7 @@ pub enum Message {
     NewNoteKbSelected(String),
     NewNoteCreate(String),
     NewNoteCreated(Result<PathBuf, String>),
+    ReindexRequested,
     ReindexCompleted(Result<usize, String>),
     DoctorCompleted(Result<DoctorSummary, String>),
 
@@ -300,6 +301,7 @@ pub enum ActiveView {
     Graph,
     Search,
     Tasks,
+    Settings,
 }
 
 // ══════════════════════════════════════════════════════════════════════════════

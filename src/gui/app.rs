@@ -9,8 +9,8 @@
 //! - Status bar (24px, bottom)
 
 use iced::widget::{
-    column, container, mouse_area, pane_grid, row, scrollable, text, text_editor, text_input, Row,
-    Space,
+    column, container, mouse_area, pane_grid, row, scrollable, text, text_editor, text_input,
+    Column, Row, Space,
 };
 use iced::{font, keyboard, mouse, Element, Length, Subscription, Task as IcedTask, Theme};
 use iced_anim::widget::button;
@@ -21,9 +21,7 @@ use std::time::{Duration, Instant};
 
 use crate::gui::animations::{AnimationState, ModalAnimation};
 use crate::gui::canvas::graph::{self, PhysicsSimulation};
-use crate::gui::components::{
-    activity_bar, feature_panel, sidebar_content, tab_bar, terminal_panel, top_search,
-};
+use crate::gui::components::{feature_panel, sidebar_content, tab_bar, terminal_panel, top_search};
 use crate::gui::icons;
 use crate::gui::layout::{Direction, LayoutState, PaneContent};
 use crate::gui::message::*;
@@ -278,7 +276,7 @@ impl MaldApp {
             sidebar_width: SIDEBAR_DEFAULT_WIDTH,
             sidebar_resizing: false,
 
-            feature_panel_visible: false,
+            feature_panel_visible: true,
             feature_panel_width: FEATURE_PANEL_DEFAULT_WIDTH,
             feature_panel_content: FeaturePanelContent::Context,
 
@@ -514,6 +512,26 @@ impl MaldApp {
                         self.modal_animation =
                             Some(ModalAnimation::open(theme::animation::MODAL_FADE_IN));
                         self.modal_closing_kind = None;
+                    }
+                    ActivityMode::Settings => {
+                        self.active_view = ActiveView::Settings;
+                        // Settings is a main-pane view now; show the file tree
+                        // in the sidebar so the user retains workspace context.
+                        self.activity_mode = ActivityMode::Files;
+                    }
+                    ActivityMode::Files => {
+                        // Files mode: leave the main view alone (Home or Editor)
+                        // unless we're stuck in a non-content view.
+                        if matches!(
+                            self.active_view,
+                            ActiveView::Settings | ActiveView::Graph | ActiveView::Tasks
+                        ) {
+                            self.active_view = if self.open_tabs.is_empty() {
+                                ActiveView::Home
+                            } else {
+                                ActiveView::Editor
+                            };
+                        }
                     }
                     _ => {}
                 }
@@ -1697,6 +1715,11 @@ impl MaldApp {
                     return IcedTask::done(Message::ErrorOccurred(error));
                 }
             },
+            Message::ReindexRequested => {
+                self.show_terminal_panel();
+                self.push_terminal_line("> mald reindex");
+                return IcedTask::perform(rebuild_search_index(), Message::ReindexCompleted);
+            }
             Message::ReindexCompleted(result) => {
                 self.show_terminal_panel();
                 match result {
@@ -1971,10 +1994,10 @@ impl MaldApp {
                 self.toasts.push(toast);
             }
             Message::ToastDismiss(id) => {
-                // Start exit animation instead of immediate removal
-                if let Some(toast) = self.toasts.iter_mut().find(|t| t.id == id) {
-                    toast.start_exit();
-                }
+                // Explicit user dismissal — remove immediately. Auto-dismissal
+                // still uses the start_exit() / tick() animation path; the X
+                // button is a clear user intent and should never feel laggy.
+                self.toasts.retain(|t| t.id != id);
             }
             Message::ToastTimeout(id) => {
                 self.toasts.retain(|t| t.id != id);
@@ -2109,14 +2132,9 @@ impl MaldApp {
         // Build the main layout row
         let mut main_row = Row::new().spacing(0);
 
-        // 1. Activity bar (always visible, 48px)
-        main_row = main_row.push(activity_bar::view(
-            self.activity_mode,
-            self.active_view == ActiveView::Home,
-            self.activity_pulse_mode,
-            self.activity_pulse_start,
-            self.mald_theme.is_dark,
-        ));
+        // Activity bar dropped — sovereign layout uses a single left rail
+        // (sidebar) that combines vault tree + commands list.
+        // (Pulse fields retained for legacy mode-switch animation.)
 
         // 2. Sidebar (collapsible, 250px default)
         let sidebar_width = self.sidebar_draw_width();
@@ -2282,10 +2300,38 @@ impl MaldApp {
 
     fn view_main_content(&self) -> Element<'_, Message> {
         // Top search bar
+        let model_label = self
+            .settings_form
+            .ai_model
+            .split(':')
+            .next()
+            .filter(|s| !s.is_empty())
+            .unwrap_or("ollama");
+        // Breadcrumb: active file path (relative) or active view label.
+        let breadcrumb = self
+            .open_tabs
+            .get(self.active_tab)
+            .map(|t| t.path.to_string_lossy().to_string())
+            .unwrap_or_else(|| match self.active_view {
+                ActiveView::Home => String::new(),
+                ActiveView::Editor => String::new(),
+                ActiveView::Settings => "settings".to_string(),
+                ActiveView::Graph => "graph".to_string(),
+                ActiveView::Search => "search".to_string(),
+                ActiveView::Tasks => "tasks".to_string(),
+            });
+        let index_label = match self.index_stats {
+            Some(ref s) if s.total > 0 && s.indexed >= s.total => "Indexed".to_string(),
+            Some(ref s) if s.total > 0 => format!("Indexing {}%", s.percent()),
+            Some(_) | None => "Idle".to_string(),
+        };
         let search_bar = top_search::view(
             &self.top_search_query,
             self.top_search_focused,
-            "Search notes... (Ctrl+Shift+F)",
+            breadcrumb,
+            self.daemon_status,
+            model_label,
+            index_label,
             self.mald_theme.is_dark,
         );
         let space_toolbar = self.view_space_toolbar();
@@ -2310,35 +2356,38 @@ impl MaldApp {
             ActiveView::Graph => self.view_graph_content(),
             ActiveView::Search => self.view_search_content(),
             ActiveView::Tasks => self.view_tasks_content(),
+            ActiveView::Settings => self.view_settings_content(),
         };
+
+        // Space toolbar only renders on Home — every other view inherits the
+        // active space from the sidebar header / palette and the strip just
+        // adds noise.
+        let show_space_toolbar = matches!(self.active_view, ActiveView::Home);
 
         // Terminal panel (at bottom, collapsible)
         let terminal_height = self.terminal_draw_height();
-        if self.terminal_visible || self.terminal_animation.is_some() {
-            column![
-                search_bar,
-                space_toolbar,
-                tab_bar,
-                container(content).height(Length::Fill),
-                terminal_panel::view(
+        let terminal: Option<Element<Message>> =
+            if self.terminal_visible || self.terminal_animation.is_some() {
+                Some(terminal_panel::view(
                     &self.terminal_lines,
                     &self.terminal_input,
                     terminal_height,
-                    self.mald_theme.is_dark
-                ),
-            ]
-            .spacing(0)
-            .into()
-        } else {
-            column![
-                search_bar,
-                space_toolbar,
-                tab_bar,
-                container(content).height(Length::Fill),
-            ]
-            .spacing(0)
-            .into()
+                    self.mald_theme.is_dark,
+                ))
+            } else {
+                None
+            };
+
+        let mut col = Column::new().spacing(0).push(search_bar);
+        if show_space_toolbar {
+            col = col.push(space_toolbar);
         }
+        col = col.push(tab_bar);
+        col = col.push(container(content).height(Length::Fill));
+        if let Some(term) = terminal {
+            col = col.push(term);
+        }
+        col.into()
     }
 
     fn view_space_toolbar(&self) -> Element<'_, Message> {
@@ -2381,25 +2430,35 @@ impl MaldApp {
     }
 
     fn view_home(&self) -> Element<'_, Message> {
+        // Sovereign Terminal Home — mono, prompt-style, calm.
+        // Layout:
+        //   > mald home  ·  vault: <kb>  ·  daemon: ●
+        //   ── recent ────────────────────────────────────
+        //     path/to/note.md     2h ago    indexed
+        //   ── stats ─────────────────────────────────────
+        //     47 notes · 132 links · 12 orphans · 3 modified
+        //   ── start ─────────────────────────────────────
+        //     > mald ask     query your vault
+        //     > mald search  full-text search
+        //     > mald new     create a note
+        //     > mald index   rebuild the index
+        //   ── spaces ────────────────────────────────────
+        //     <kb buttons>
+
         let iced_theme = self.mald_theme.iced_theme();
         let text_color = theme::themed(&iced_theme, colors::TEXT, colors::latte::TEXT);
         let sub0 = theme::themed(&iced_theme, colors::SUBTEXT0, colors::latte::SUBTEXT0);
         let sub1 = theme::themed(&iced_theme, colors::SUBTEXT1, colors::latte::SUBTEXT1);
-        let dim = theme::themed(&iced_theme, colors::SURFACE2, colors::latte::SURFACE2);
-        let teal = theme::themed(&iced_theme, colors::TEAL, colors::latte::TEAL);
-        let green = theme::themed(&iced_theme, colors::GREEN, colors::latte::GREEN);
+        let accent = theme::themed(&iced_theme, colors::ACCENT, colors::latte::ACCENT);
+        let warm = theme::themed(&iced_theme, colors::YELLOW, colors::latte::YELLOW);
         let red = theme::themed(&iced_theme, colors::RED, colors::latte::RED);
-        let blue = theme::themed(&iced_theme, colors::ACCENT, colors::latte::ACCENT);
-        let yellow = theme::themed(&iced_theme, colors::YELLOW, colors::latte::YELLOW);
-        let lavender = theme::themed(&iced_theme, colors::LAVENDER, colors::latte::LAVENDER);
+        let dim = theme::themed(&iced_theme, colors::SURFACE2, colors::latte::SURFACE2);
 
         let note_count = self
             .file_tree_entries
             .iter()
             .filter(|entry| !entry.is_dir)
             .count();
-        let open_task_count = self.tasks.iter().filter(|task| !task.done).count();
-        let done_task_count = self.tasks.iter().filter(|task| task.done).count();
         let link_count = self.graph_edges.len();
         let connected_count = self
             .graph_nodes
@@ -2408,295 +2467,210 @@ impl MaldApp {
             .count();
         let orphan_count = note_count.saturating_sub(connected_count);
         let modified_count = self.open_tabs.iter().filter(|tab| tab.modified).count();
-        let connected_ratio = if note_count == 0 {
-            0
-        } else {
-            ((connected_count as f32 / note_count as f32) * 100.0).round() as i32
-        };
-        let active_focus = self
-            .open_tabs
-            .get(self.active_tab)
-            .map(|tab| tab.title.clone())
-            .unwrap_or_else(|| "No note open yet".into());
-        let graph_hub = self
-            .graph_nodes
-            .iter()
-            .max_by_key(|node| node.degree)
-            .map(|node| format!("{} · {} links", node.label, node.degree))
-            .unwrap_or_else(|| "Start linking notes to grow the graph".into());
+        let open_task_count = self.tasks.iter().filter(|task| !task.done).count();
 
         let recent_files: Vec<&FileEntry> = self
             .file_tree_entries
             .iter()
             .filter(|entry| !entry.is_dir)
-            .take(6)
+            .take(8)
             .collect();
-        let open_tasks: Vec<(usize, &TaskItem)> = self
-            .tasks
-            .iter()
-            .enumerate()
-            .filter(|(_, task)| !task.done)
-            .take(5)
-            .collect();
-        let spaces_content: Element<Message> = if self.known_kbs.is_empty() {
-            column![
-                text("No spaces detected yet.")
-                    .size(theme::type_scale::BODY)
-                    .color(sub1),
-                text("Create one from the CLI or load the demo space to explore safely.")
-                    .size(theme::type_scale::UI)
-                    .color(sub0),
-            ]
-            .spacing(theme::spacing::XS)
-            .into()
-        } else {
-            column(
-                self.known_kbs
-                    .iter()
-                    .take(6)
-                    .cloned()
-                    .map(|kb_name| self.home_kb_button(kb_name, text_color, sub0, lavender))
-                    .collect::<Vec<_>>(),
-            )
-            .spacing(theme::spacing::XS)
-            .into()
+
+        // Helper closures — mono everywhere.
+        let mono = |s: String, color: iced::Color, size: f32| {
+            text(s).size(size).color(color).font(iced::Font::MONOSPACE)
         };
-        let recent_content: Element<Message> = if recent_files.is_empty() {
-            column![
-                text("No notes yet. Start with one note and one real question.")
-                    .size(theme::type_scale::BODY)
-                    .color(sub1),
-                text("Use [[wikilinks]] early so the graph grows around actual work, not theory.")
-                    .size(theme::type_scale::UI)
-                    .color(sub0),
-            ]
-            .spacing(theme::spacing::XS)
+        // Header line
+        let daemon_dot = match self.daemon_status {
+            DaemonStatus::Running => mono("●".into(), accent, theme::type_scale::UI),
+            DaemonStatus::Stopped => mono("●".into(), red, theme::type_scale::UI),
+            DaemonStatus::Unknown => mono("●".into(), dim, theme::type_scale::UI),
+        };
+        let header = row![
+            mono("> mald home".into(), accent, theme::type_scale::H2),
+            Space::new().width(theme::spacing::MD),
+            mono(
+                format!("vault: {}", self.current_kb),
+                sub1,
+                theme::type_scale::BODY,
+            ),
+            Space::new().width(theme::spacing::MD),
+            daemon_dot,
+            mono(" daemon".into(), sub0, theme::type_scale::BODY),
+        ]
+        .spacing(0)
+        .align_y(iced::alignment::Vertical::Center);
+
+        // Recent files block
+        let recent_block: Element<Message> = if recent_files.is_empty() {
+            mono(
+                "  no notes yet — > mald new  to start".into(),
+                sub1,
+                theme::type_scale::BODY,
+            )
             .into()
         } else {
             let items: Vec<Element<Message>> = recent_files
                 .into_iter()
                 .map(|entry| {
-                    self.home_note_button(entry.name.as_str(), entry.path.clone(), lavender, dim)
+                    let path_str = entry.path.to_string_lossy().to_string();
+                    let name = entry.name.clone();
+                    let path_clone = entry.path.clone();
+                    let is_modified = self
+                        .open_tabs
+                        .iter()
+                        .any(|t| t.path == entry.path && t.modified);
+                    let status_label = if is_modified { "modified" } else { "indexed" };
+                    let status_color = if is_modified { warm } else { accent };
+                    iced_anim::widget::button::Button::new(
+                        row![
+                            mono(
+                                format!("  {path_str:<40}"),
+                                text_color,
+                                theme::type_scale::BODY
+                            ),
+                            Space::new().width(Length::Fill),
+                            mono(format!("{name:>20}  "), sub0, theme::type_scale::CAPTION),
+                            mono(
+                                status_label.to_string(),
+                                status_color,
+                                theme::type_scale::CAPTION
+                            ),
+                        ]
+                        .align_y(iced::alignment::Vertical::Center),
+                    )
+                    .on_press(Message::FileTreeSelect(path_clone))
+                    .padding([2, theme::spacing::SM as u16])
+                    .width(Length::Fill)
+                    .style(theme::list_item_style(false))
+                    .into()
                 })
                 .collect();
-            column(items).spacing(theme::spacing::SM).into()
+            column(items).spacing(0).into()
         };
-        let tasks_content: Element<Message> = if open_tasks.is_empty() {
-            column![
-                text("No open loops right now.")
-                    .size(theme::type_scale::BODY)
-                    .color(sub1),
-                text("Capture tasks with `- [ ]` inside notes and MALD will surface them here.")
-                    .size(theme::type_scale::UI)
-                    .color(sub0),
-            ]
-            .spacing(theme::spacing::XS)
+
+        // Stats line
+        let stats_line = mono(
+            format!(
+                "  {note_count} notes · {link_count} links · {orphan_count} orphans · {modified_count} modified · {open_task_count} open tasks"
+            ),
+            sub1,
+            theme::type_scale::BODY,
+        );
+
+        // Quick start commands
+        let cmd_row =
+            |cmd: &'static str, hint: &'static str, msg: Message| -> Element<'_, Message> {
+                iced_anim::widget::button::Button::new(
+                    row![
+                        mono(format!("  > {cmd:<14}"), accent, theme::type_scale::BODY),
+                        mono(hint.to_string(), sub1, theme::type_scale::BODY),
+                    ]
+                    .align_y(iced::alignment::Vertical::Center),
+                )
+                .on_press(msg)
+                .padding([2, theme::spacing::SM as u16])
+                .width(Length::Fill)
+                .style(theme::list_item_style(false))
+                .into()
+            };
+
+        let quick_block = column![
+            cmd_row(
+                "mald ask",
+                "query your vault with citations",
+                Message::FeaturePanelSetContent(crate::gui::message::FeaturePanelContent::AIChat),
+            ),
+            cmd_row(
+                "mald search",
+                "full-text search across all notes",
+                Message::SearchOpen,
+            ),
+            cmd_row("mald new", "create a note", Message::NewNotePrompt),
+            cmd_row("mald index", "rebuild the index", Message::ReindexRequested),
+        ]
+        .spacing(0);
+
+        // Spaces row
+        let spaces_block: Element<Message> = if self.known_kbs.is_empty() {
+            mono(
+                "  no spaces detected — `mald init` from CLI".into(),
+                sub1,
+                theme::type_scale::BODY,
+            )
             .into()
         } else {
-            let items: Vec<Element<Message>> = open_tasks
-                .into_iter()
-                .map(|(idx, task)| self.home_task_button(idx, task, text_color, sub0, yellow))
+            let items: Vec<Element<Message>> = self
+                .known_kbs
+                .iter()
+                .take(8)
+                .map(|kb| {
+                    let is_active = kb == &self.current_kb;
+                    let prefix = if is_active { "*" } else { " " };
+                    let label_color = if is_active { accent } else { text_color };
+                    iced_anim::widget::button::Button::new(mono(
+                        format!("  {prefix} {kb}"),
+                        label_color,
+                        theme::type_scale::BODY,
+                    ))
+                    .on_press(Message::CurrentKbSwitch(kb.clone()))
+                    .padding([2, theme::spacing::SM as u16])
+                    .width(Length::Fill)
+                    .style(theme::list_item_style(is_active))
+                    .into()
+                })
                 .collect();
-            column(items).spacing(theme::spacing::SM).into()
+            column(items).spacing(0).into()
         };
 
-        let focus_card = self.panel_card(
-            column![
-                row![
-                    text("Work now").size(theme::type_scale::CAPTION).color(sub0),
-                    Space::new().width(Length::Fill),
-                    self.signal_badge(
-                        match self.daemon_status {
-                            DaemonStatus::Running => "Daemon running".into(),
-                            DaemonStatus::Stopped => "Daemon stopped".into(),
-                            DaemonStatus::Unknown => "Daemon checking".into(),
-                        },
-                        match self.daemon_status {
-                            DaemonStatus::Running => green,
-                            DaemonStatus::Stopped => red,
-                            DaemonStatus::Unknown => dim,
-                        },
-                    ),
-                ]
-                .align_y(iced::alignment::Vertical::Center),
-                Space::new().height(theme::spacing::SM),
-                text(format!("Working in {}", self.current_kb))
-                    .size(theme::type_scale::H1)
-                    .color(text_color),
-                Space::new().height(theme::spacing::XS),
-                text("The dashboard should help you decide the next move fast: continue the current note, create a new one, or jump into search.")
-                    .size(theme::type_scale::BODY)
-                    .color(sub1),
-                Space::new().height(theme::spacing::LG),
-                container(
-                    column![
-                        text("In focus").size(theme::type_scale::CAPTION).color(sub0),
-                        text(active_focus).size(theme::type_scale::H3).color(text_color),
-                        text("Use Ctrl+P for commands, Ctrl+Shift+F for search, and Ctrl+N for a new note.")
-                            .size(theme::type_scale::UI)
-                            .color(sub0),
-                    ]
-                    .spacing(theme::spacing::XS),
-                )
-                .padding(theme::spacing::LG as u16)
-                .style(theme::card_style),
-                Space::new().height(theme::spacing::LG),
-                row![
-                    self.action_button("New note", Message::NewNotePrompt, true),
-                    self.action_button("Search", Message::SearchOpen, false),
-                    self.action_button("Review tasks", Message::TasksToggle, false),
-                    self.action_button("Demo space", Message::DemoSpaceOpen, false),
-                ]
-                .spacing(theme::spacing::SM)
-                .wrap(),
-                Space::new().height(theme::spacing::MD),
-                row![
-                    self.signal_badge(format!("{modified_count} modified"), lavender),
-                    self.signal_badge(format!("{done_task_count} completed"), green),
-                ]
-                .spacing(theme::spacing::SM)
-                .wrap(),
-            ]
-            .spacing(0),
-            Some(teal),
-        );
-
-        let state_card = self.panel_card(
-            column![
-                text("Workspace state")
-                    .size(theme::type_scale::CAPTION)
-                    .color(sub0),
-                Space::new().height(theme::spacing::XS),
-                text("Health, structure, and space selection")
-                    .size(theme::type_scale::H3)
-                    .color(text_color),
-                Space::new().height(theme::spacing::SM),
-                text("This region is about the archive itself: scale, graph quality, and which space you want to work in.")
-                    .size(theme::type_scale::BODY)
-                    .color(sub1),
-                Space::new().height(theme::spacing::MD),
-                row![
-                    container(self.stat_card_colored("Notes", note_count.to_string(), blue, sub0))
-                        .width(Length::Fill),
-                    container(self.stat_card_colored(
-                        "Open tasks",
-                        open_task_count.to_string(),
-                        yellow,
-                        sub0
-                    ))
-                    .width(Length::Fill),
-                ]
-                .spacing(theme::spacing::SM),
-                row![
-                    container(self.stat_card_colored(
-                        "Connected",
-                        format!("{connected_ratio}%"),
-                        teal,
-                        sub0
-                    ))
-                    .width(Length::Fill),
-                    container(self.stat_card_colored(
-                        "Links",
-                        link_count.to_string(),
-                        lavender,
-                        sub0
-                    ))
-                    .width(Length::Fill),
-                ]
-                .spacing(theme::spacing::SM),
-                Space::new().height(theme::spacing::LG),
-                text("Most connected note")
-                    .size(theme::type_scale::CAPTION)
-                    .color(sub0),
-                text(graph_hub).size(theme::type_scale::UI).color(text_color),
-                text(format!("{orphan_count} notes still need links to become part of the graph."))
-                    .size(theme::type_scale::CAPTION)
-                    .color(sub1),
-                Space::new().height(theme::spacing::LG),
-                text("Spaces").size(theme::type_scale::CAPTION).color(sub0),
-                spaces_content,
-            ]
-            .spacing(0),
-            Some(lavender),
-        );
-
-        let recent_card = self.panel_card(
-            column![
-                row![
-                    text("Continue")
-                        .size(theme::type_scale::CAPTION)
-                        .color(sub0),
-                    Space::new().width(Length::Fill),
-                    text("Recent notes")
-                        .size(theme::type_scale::CAPTION)
-                        .color(blue),
-                ]
-                .align_y(iced::alignment::Vertical::Center),
-                Space::new().height(theme::spacing::XS),
-                text("The quickest way back into flow is usually the note you touched most recently.")
-                    .size(theme::type_scale::BODY)
-                    .color(sub1),
-                Space::new().height(theme::spacing::MD),
-                recent_content,
-            ]
-            .spacing(0),
-            Some(blue),
-        );
-
-        let review_card = self.panel_card(
-            column![
-                row![
-                    text("Review").size(theme::type_scale::CAPTION).color(sub0),
-                    Space::new().width(Length::Fill),
-                    self.signal_badge(format!("{open_task_count} active"), yellow),
-                ]
-                .align_y(iced::alignment::Vertical::Center),
-                Space::new().height(theme::spacing::XS),
-                text("Tasks, graph actions, and the safe next step")
-                    .size(theme::type_scale::H3)
-                    .color(text_color),
-                Space::new().height(theme::spacing::SM),
-                row![
-                    self.action_button("Review tasks", Message::TasksToggle, false),
-                    self.action_button("Inspect graph", Message::GraphToggle, false),
-                    self.action_button("New note", Message::NewNotePrompt, true),
-                ]
-                .spacing(theme::spacing::SM)
-                .wrap(),
-                Space::new().height(theme::spacing::LG),
-                tasks_content,
-                Space::new().height(theme::spacing::LG),
-                text("Safe ways to learn").size(theme::type_scale::CAPTION).color(sub0),
-                text("Use the demo space if you want sample notes, tasks, and wikilinks without touching your real archive.")
-                    .size(theme::type_scale::UI)
-                    .color(sub1),
-                text("If you already know what you want, Ctrl+P gets there faster than browsing.")
-                    .size(theme::type_scale::UI)
-                    .color(sub1),
-            ]
-            .spacing(0),
-            Some(yellow),
+        // Tips block
+        let tips = mono(
+            "  Ctrl+P palette · Ctrl+Shift+F search · Ctrl+N new · [[wikilinks]] grow the graph"
+                .into(),
+            sub0,
+            theme::type_scale::CAPTION,
         );
 
         let layout = column![
-            row![
-                container(focus_card).width(Length::FillPortion(1)),
-                container(state_card).width(Length::FillPortion(1)),
-            ]
-            .spacing(theme::spacing::LG),
-            row![
-                container(recent_card).width(Length::FillPortion(1)),
-                container(review_card).width(Length::FillPortion(1)),
-            ]
-            .spacing(theme::spacing::LG),
+            header,
+            Space::new().height(theme::spacing::LG),
+            mono(
+                "── recent ───────────────────────────────────────────────".into(),
+                dim,
+                theme::type_scale::UI
+            ),
+            recent_block,
+            Space::new().height(theme::spacing::LG),
+            mono(
+                "── stats ────────────────────────────────────────────────".into(),
+                dim,
+                theme::type_scale::UI
+            ),
+            stats_line,
+            Space::new().height(theme::spacing::LG),
+            mono(
+                "── start ────────────────────────────────────────────────".into(),
+                dim,
+                theme::type_scale::UI
+            ),
+            quick_block,
+            Space::new().height(theme::spacing::LG),
+            mono(
+                "── spaces ───────────────────────────────────────────────".into(),
+                dim,
+                theme::type_scale::UI
+            ),
+            spaces_block,
+            Space::new().height(theme::spacing::LG),
+            tips,
         ]
-        .spacing(theme::spacing::LG)
-        .max_width(1180);
+        .spacing(theme::spacing::XS)
+        .max_width(900);
 
         container(scrollable(layout).style(theme::scrollable_style))
             .width(Length::Fill)
             .height(Length::Fill)
-            .padding(theme::spacing::XXL as u16)
+            .padding(theme::spacing::XL as u16)
             .center_x(Length::Fill)
             .style(theme::editor_style)
             .into()
@@ -2918,6 +2892,29 @@ impl MaldApp {
         self.rebuild_palette_commands();
     }
 
+    fn view_settings_content(&self) -> Element<'_, Message> {
+        let theme = self.mald_theme.iced_theme();
+        let form = sidebar_content::view_settings(
+            &self.settings_form,
+            &self.known_kbs,
+            &self.detected_editors,
+            self.mald_shell_available,
+            &theme,
+        );
+        // Centered, max-width column so the form doesn't stretch across a
+        // 1500px screen and become unreadable.
+        container(
+            container(form)
+                .max_width(720.0)
+                .padding(theme::spacing::XL as u16),
+        )
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .center_x(Length::Fill)
+        .style(theme::editor_style)
+        .into()
+    }
+
     fn view_editor_content(&self) -> Element<'_, Message> {
         use crate::gui::widgets::empty_state;
 
@@ -2999,7 +2996,7 @@ impl MaldApp {
         let sub_color = theme::themed(&iced_theme, colors::SUBTEXT0, colors::latte::SUBTEXT0);
         let sub1_color = theme::themed(&iced_theme, colors::SUBTEXT1, colors::latte::SUBTEXT1);
         let dim_color = theme::themed(&iced_theme, colors::SURFACE2, colors::latte::SURFACE2);
-        let blue = theme::themed(&iced_theme, colors::ACCENT, colors::latte::ACCENT);
+        let _blue = theme::themed(&iced_theme, colors::ACCENT, colors::latte::ACCENT);
         let teal = theme::themed(&iced_theme, colors::TEAL, colors::latte::TEAL);
         let lavender = theme::themed(&iced_theme, colors::LAVENDER, colors::latte::LAVENDER);
         let yellow = theme::themed(&iced_theme, colors::YELLOW, colors::latte::YELLOW);
@@ -3045,72 +3042,49 @@ impl MaldApp {
             .unwrap_or_else(|| "Waiting for the first connection".into());
         let zoom_label = format!("{:.0}%", self.graph_zoom * 100.0);
 
-        let header = self.panel_card(
-            column![
-                row![
-                    self.signal_badge(format!("{visible_count} notes"), blue),
-                    self.signal_badge(format!("{visible_edge_count} links"), teal),
-                    self.signal_badge(format!("Zoom {zoom_label}"), lavender),
-                ]
-                .spacing(theme::spacing::SM),
-                Space::new().height(theme::spacing::LG),
-                text("Knowledge graph").size(theme::type_scale::DISPLAY).color(text_color),
-                Space::new().height(theme::spacing::XS),
-                text("See how ideas attach before they drift. Scroll to zoom, drag to pan, click a note to open it.")
-                    .size(theme::type_scale::BODY)
-                    .color(sub1_color),
-                Space::new().height(theme::spacing::LG),
-                row![
-                    self.action_button(
-                        if self.graph_settings_visible {
-                            "Hide controls"
-                        } else {
-                            "Tune physics"
-                        },
-                        Message::GraphSettingsToggle,
-                        false,
-                    ),
-                    self.action_button("Reset view", Message::GraphViewReset, false),
-                    self.action_button("Reset forces", Message::GraphPhysicsReset, false),
-                    self.action_button("New note", Message::NewNotePrompt, true),
-                    Space::new().width(Length::Fill),
-                    text(format!("Hub: {hub_label}"))
-                        .size(theme::type_scale::UI)
-                        .color(sub_color),
-                ]
-                .spacing(theme::spacing::SM)
-                .align_y(iced::alignment::Vertical::Center),
+        // Compact one-line header strip — no oversized stat cards. The canvas
+        // is the primary affordance on this view.
+        let _ = (sub1_color, dim_color, lavender, yellow, hub_label);
+        let header_strip = container(
+            row![
+                text("Knowledge graph")
+                    .size(theme::type_scale::H3)
+                    .color(text_color),
+                Space::new().width(theme::spacing::LG),
+                text(format!("{visible_count} notes"))
+                    .size(theme::type_scale::CAPTION)
+                    .color(sub_color),
+                text("·").size(theme::type_scale::CAPTION).color(sub_color),
+                text(format!("{visible_edge_count} links"))
+                    .size(theme::type_scale::CAPTION)
+                    .color(sub_color),
+                text("·").size(theme::type_scale::CAPTION).color(sub_color),
+                text(format!("{orphan_count} orphans"))
+                    .size(theme::type_scale::CAPTION)
+                    .color(sub_color),
+                text("·").size(theme::type_scale::CAPTION).color(sub_color),
+                text(format!("zoom {zoom_label}"))
+                    .size(theme::type_scale::CAPTION)
+                    .color(sub_color),
+                Space::new().width(Length::Fill),
+                self.action_button(
+                    if self.graph_settings_visible {
+                        "Hide controls"
+                    } else {
+                        "Tune physics"
+                    },
+                    Message::GraphSettingsToggle,
+                    false,
+                ),
+                self.action_button("Reset view", Message::GraphViewReset, false),
+                self.action_button("Reset forces", Message::GraphPhysicsReset, false),
+                self.action_button("New note", Message::NewNotePrompt, true),
             ]
-            .spacing(0),
-            Some(blue),
-        );
-
-        let metrics = row![
-            container(self.stat_card_colored(
-                "Visible",
-                visible_count.to_string(),
-                blue,
-                sub_color
-            ))
-            .width(Length::FillPortion(1)),
-            container(self.stat_card_colored(
-                "Linked",
-                visible_edge_count.to_string(),
-                teal,
-                sub_color
-            ))
-            .width(Length::FillPortion(1)),
-            container(self.stat_card_colored(
-                "Orphans",
-                orphan_count.to_string(),
-                yellow,
-                sub_color
-            ))
-            .width(Length::FillPortion(1)),
-            container(self.stat_card_colored("Focus", zoom_label.clone(), lavender, sub_color))
-                .width(Length::FillPortion(1)),
-        ]
-        .spacing(theme::spacing::MD);
+            .spacing(theme::spacing::SM)
+            .align_y(iced::alignment::Vertical::Center),
+        )
+        .padding([theme::spacing::SM as u16, theme::spacing::LG as u16])
+        .style(theme::section_header_style);
 
         let graph_body: Element<Message> = if display_nodes.is_empty() {
             empty_state::presets::no_graph(self.mald_theme.is_dark)
@@ -3260,9 +3234,9 @@ impl MaldApp {
             None
         };
 
-        let mut content = column![header, metrics]
-            .spacing(theme::spacing::LG)
-            .padding(theme::spacing::XXL as u16)
+        let mut content = column![header_strip]
+            .spacing(theme::spacing::SM)
+            .padding(theme::spacing::LG as u16)
             .height(Length::Fill);
 
         if let Some(controls) = controls {

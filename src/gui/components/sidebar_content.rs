@@ -55,69 +55,40 @@ pub fn view<'a>(data: SidebarData<'a>) -> Element<'a, Message> {
         index_stats,
     } = data;
 
-    let header_badge = match mode {
-        ActivityMode::Files => {
-            if file_entries.is_empty() {
-                None
-            } else {
-                Some(file_entries.len().to_string())
-            }
-        }
-        ActivityMode::Search => {
-            if search_query.is_empty() {
-                None
-            } else {
-                Some(search_results.len().to_string())
-            }
-        }
-        ActivityMode::Graph => {
-            if graph_nodes.is_empty() {
-                None
-            } else {
-                Some(graph_nodes.len().to_string())
-            }
-        }
-        ActivityMode::Tasks => {
-            if tasks.is_empty() {
-                None
-            } else {
-                let open_count = tasks.iter().filter(|t| !t.done).count();
-                let done_count = tasks.iter().filter(|t| t.done).count();
-                Some(format!("{open_count} / {done_count}"))
-            }
-        }
-        ActivityMode::AI => {
-            if ai_messages.is_empty() {
-                None
-            } else {
-                Some(ai_messages.len().to_string())
-            }
-        }
-        ActivityMode::Settings => None,
+    // Sovereign layout — left rail always shows vault tree.
+    // Other former-sidebar modes (Search/Graph/Tasks/AI/Settings) live in the
+    // main pane or feature panel and are reached via the Commands footer.
+    let _ = (
+        mode,
+        search_query,
+        search_results,
+        graph_nodes,
+        tasks,
+        ai_messages,
+        ai_input,
+        settings,
+        known_kbs,
+        detected_editors,
+        mald_shell_available,
+    );
+
+    let header_badge = if file_entries.is_empty() {
+        None
+    } else {
+        Some(file_entries.len().to_string())
     };
 
     let sub_color = themed(&theme, colors::SUBTEXT0, colors::latte::SUBTEXT0);
-    let header = section_header(mode.label(), header_badge, sub_color);
+    let header = section_header("VAULT", header_badge, sub_color);
 
-    let content: Element<Message> = match mode {
-        ActivityMode::Files => view_files(file_entries, &theme, &modified_paths),
-        ActivityMode::Search => view_search(search_query, search_results, &theme),
-        ActivityMode::Graph => view_graph(graph_nodes, &theme),
-        ActivityMode::Tasks => view_tasks(tasks, &theme),
-        ActivityMode::AI => view_ai(ai_messages, ai_input, &theme),
-        ActivityMode::Settings => view_settings(
-            settings,
-            known_kbs,
-            detected_editors,
-            mald_shell_available,
-            &theme,
-        ),
-    };
+    let content: Element<Message> = view_files(file_entries, &theme, &modified_paths);
 
     let footer = indexer_footer(index_stats, &theme);
+    let quick = quick_commands_footer(&theme);
     let inner = column![
         header,
         container(content).width(Length::Fill).height(Length::Fill),
+        quick,
         footer,
     ]
     .spacing(0);
@@ -126,6 +97,74 @@ pub fn view<'a>(data: SidebarData<'a>) -> Element<'a, Message> {
         .width(Length::Fill)
         .height(Length::Fill)
         .style(theme::sidebar_style)
+        .into()
+}
+
+fn quick_commands_footer<'a>(theme: &iced::Theme) -> Element<'a, Message> {
+    let sub_color = themed(theme, colors::SUBTEXT0, colors::latte::SUBTEXT0);
+    let text_color = themed(theme, colors::TEXT, colors::latte::TEXT);
+    let dim = themed(theme, colors::SURFACE2, colors::latte::SURFACE2);
+    let accent = themed(theme, colors::ACCENT, colors::latte::ACCENT);
+
+    let header = container(
+        text("> COMMANDS")
+            .size(type_scale::CAPTION)
+            .color(sub_color)
+            .font(iced::Font::MONOSPACE),
+    )
+    .padding([spacing::SM as u16, spacing::SM as u16]);
+
+    let entry =
+        |label: &'static str, shortcut: &'static str, msg: Message| -> Element<'a, Message> {
+            iced_anim::widget::button::Button::new(
+                row![
+                    text(">")
+                        .size(type_scale::CAPTION)
+                        .color(accent)
+                        .font(iced::Font::MONOSPACE),
+                    text(label)
+                        .size(type_scale::CAPTION)
+                        .color(text_color)
+                        .font(iced::Font::MONOSPACE),
+                    Space::new().width(Length::Fill),
+                    text(shortcut)
+                        .size(type_scale::CAPTION)
+                        .color(dim)
+                        .font(iced::Font::MONOSPACE),
+                ]
+                .align_y(iced::Alignment::Center)
+                .spacing(spacing::SM),
+            )
+            .on_press(msg)
+            .padding([spacing::XS as u16, spacing::SM as u16])
+            .width(Length::Fill)
+            .style(theme::list_item_style(false))
+            .into()
+        };
+
+    let body = column![
+        entry("home", "", Message::GoHome),
+        entry(
+            "ask",
+            "Ctrl+Shift+B",
+            Message::FeaturePanelSetContent(crate::gui::message::FeaturePanelContent::AIChat),
+        ),
+        entry("search", "Ctrl+Shift+F", Message::SearchOpen),
+        entry("new", "Ctrl+N", Message::NewNotePrompt),
+        entry("graph", "", Message::ActivityBarSelect(ActivityMode::Graph),),
+        entry("tasks", "", Message::ActivityBarSelect(ActivityMode::Tasks),),
+        entry("index", "", Message::ReindexRequested),
+        entry(
+            "settings",
+            "",
+            Message::ActivityBarSelect(ActivityMode::Settings),
+        ),
+    ]
+    .spacing(0);
+
+    container(column![header, body].spacing(0))
+        .width(Length::Fill)
+        .style(theme::section_header_style)
         .into()
 }
 
@@ -737,7 +776,7 @@ fn settings_card<'a>(
         .into()
 }
 
-fn view_settings<'a>(
+pub fn view_settings<'a>(
     settings: &'a GuiSettingsForm,
     known_kbs: &'a [String],
     detected_editors: &'a [crate::commands::launch::DetectedEditor],

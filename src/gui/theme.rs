@@ -15,36 +15,40 @@ use iced_aw::style::{badge as aw_badge, card as aw_card, Status as AwStatus};
 pub mod colors {
     use iced::Color;
 
-    // Base colors
-    pub const CRUST: Color = Color::from_rgb(0.067, 0.067, 0.106); // #11111b - Activity bar, status bar
-    pub const MANTLE: Color = Color::from_rgb(0.094, 0.094, 0.145); // #181825 - Sidebar, feature panel bg
-    pub const BASE: Color = Color::from_rgb(0.118, 0.118, 0.180); // #1e1e2e - Editor bg, main bg
-    pub const SURFACE0: Color = Color::from_rgb(0.192, 0.196, 0.267); // #313244 - Borders, inactive tabs
-    pub const SURFACE1: Color = Color::from_rgb(0.271, 0.278, 0.353); // #45475a - Hover states
-    pub const SURFACE2: Color = Color::from_rgb(0.345, 0.357, 0.439); // #585b70 - Subtle/disabled text
+    // ── Sovereign Terminal palette ──────────────────────────────────────────
+    // Backgrounds (terminal black → graphite panels)
+    pub const CRUST: Color = Color::from_rgb(0.0314, 0.0353, 0.0392); // #08090A - status bar / outermost
+    pub const BASE: Color = Color::from_rgb(0.0431, 0.0510, 0.0549); // #0B0D0E - editor / main bg
+    pub const MANTLE: Color = Color::from_rgb(0.0667, 0.0784, 0.0863); // #111416 - sidebar / feature panel
+    pub const SURFACE0: Color = Color::from_rgb(0.0902, 0.1020, 0.1137); // #171A1D - inactive tabs / borders
+    pub const SURFACE1: Color = Color::from_rgb(0.1216, 0.1373, 0.1490); // #1F2326 - hover
+    pub const SURFACE2: Color = Color::from_rgb(0.1647, 0.1843, 0.2000); // #2A2F33 - disabled bg
 
-    // Text colors
-    pub const TEXT: Color = Color::from_rgb(0.804, 0.839, 0.957); // #cdd6f4 - Primary text
-    pub const SUBTEXT1: Color = Color::from_rgb(0.729, 0.757, 0.878); // #bac2de - Secondary text
-    pub const SUBTEXT0: Color = Color::from_rgb(0.651, 0.678, 0.784); // #a6adc8 - Secondary text
+    // Text (off-white → graphite muted)
+    pub const TEXT: Color = Color::from_rgb(0.9098, 0.8863, 0.8314); // #E8E2D4 - primary
+    pub const SUBTEXT1: Color = Color::from_rgb(0.7216, 0.7098, 0.6745); // #B8B5AC - secondary
+    pub const SUBTEXT0: Color = Color::from_rgb(0.5451, 0.5686, 0.5412); // #8B918A - muted
 
-    // Accent colors
-    pub const BLUE: Color = Color::from_rgb(0.537, 0.706, 0.980); // #89b4fa - Accent, active indicator
-    pub const LAVENDER: Color = Color::from_rgb(0.706, 0.745, 0.996); // #b4befe - Links
-    pub const GREEN: Color = Color::from_rgb(0.651, 0.890, 0.631); // #a6e3a1 - Success, daemon ON
-    pub const RED: Color = Color::from_rgb(0.953, 0.545, 0.659); // #f38ba8 - Danger, daemon OFF
-    pub const YELLOW: Color = Color::from_rgb(0.976, 0.886, 0.686); // #f9e2af - Tags, warnings
-    pub const PEACH: Color = Color::from_rgb(0.980, 0.702, 0.529); // #fab387 - Strings
-    pub const MAUVE: Color = Color::from_rgb(0.796, 0.651, 0.969); // #cba6f7 - Keywords
-    pub const TEAL: Color = Color::from_rgb(0.580, 0.886, 0.835); // #94e2d5 - Headings
-    pub const SKY: Color = Color::from_rgb(0.537, 0.820, 0.906); // #89dceb - Info
-    pub const SAPPHIRE: Color = Color::from_rgb(0.455, 0.784, 0.835); // #74c7ec - Alternate accent
-    pub const PINK: Color = Color::from_rgb(0.961, 0.761, 0.906); // #f5c2e7 - Highlight
-    pub const FLAMINGO: Color = Color::from_rgb(0.949, 0.804, 0.804); // #f2cdcd - Subtle highlight
-    pub const ROSEWATER: Color = Color::from_rgb(0.961, 0.878, 0.878); // #f5e0dc - Soft highlight
+    // Accent system — single sage + warm gold pair (no rainbow)
+    pub const GREEN: Color = Color::from_rgb(0.5608, 0.6863, 0.5608); // #8FAF8F - sage accent
+    pub const YELLOW: Color = Color::from_rgb(0.7490, 0.6549, 0.4157); // #BFA76A - warm gold (tags)
+    pub const PEACH: Color = Color::from_rgb(0.8196, 0.6039, 0.4000); // #D19A66 - warning
+    pub const RED: Color = Color::from_rgb(0.7765, 0.4706, 0.4706); // #C67878 - error
 
-    // Brand accent — MALD identity is green-on-black terminal vibe.
-    // Aliases GREEN; swap source color here to retint app-wide.
+    // Compat aliases — collapsed onto the sovereign two-accent system.
+    // All non-primary "rainbow" Catppuccin slots fold into sage/gold/text variants
+    // so widgets still compile but the visual identity stays monotone.
+    pub const BLUE: Color = GREEN; // sage stand-in (was bright blue)
+    pub const SAPPHIRE: Color = Color::from_rgb(0.4863, 0.5961, 0.4863); // darker sage
+    pub const TEAL: Color = Color::from_rgb(0.6353, 0.7373, 0.6353); // lighter sage
+    pub const SKY: Color = GREEN;
+    pub const LAVENDER: Color = SUBTEXT1; // links == off-white
+    pub const MAUVE: Color = YELLOW; // keywords == warm gold
+    pub const PINK: Color = PEACH;
+    pub const FLAMINGO: Color = PEACH;
+    pub const ROSEWATER: Color = TEXT;
+
+    // Brand accent — sovereign sage.
     pub const ACCENT: Color = GREEN;
 
     // Semantic colors (aliases for clarity — dark theme only, use themed() for light)
@@ -82,57 +86,52 @@ pub mod colors {
     // Catppuccin Latte Palette (Light Theme)
     // ══════════════════════════════════════════════════════════════════════════
 
+    // Dark-only build — `latte` module exists so all `is_light_theme()` callsites
+    // still compile, but every constant mirrors the dark sovereign palette so
+    // toggling theme produces no visible change. Light-mode is intentionally dead.
     pub mod latte {
         use iced::Color;
 
-        // Accent colors
-        pub const ROSEWATER: Color = Color::from_rgb(0.862, 0.443, 0.376); // #dc8a78
-        pub const FLAMINGO: Color = Color::from_rgb(0.867, 0.431, 0.431); // #dd7878
-        pub const PINK: Color = Color::from_rgb(0.918, 0.400, 0.624); // #ea76cb
-        pub const MAUVE: Color = Color::from_rgb(0.522, 0.310, 0.890); // #8839ef
-        pub const RED: Color = Color::from_rgb(0.820, 0.118, 0.224); // #d20f39
-        pub const MAROON: Color = Color::from_rgb(0.902, 0.271, 0.325); // #e64553
-        pub const PEACH: Color = Color::from_rgb(0.996, 0.400, 0.082); // #fe640b
-        pub const YELLOW: Color = Color::from_rgb(0.875, 0.565, 0.082); // #df8e1d
-        pub const GREEN: Color = Color::from_rgb(0.251, 0.627, 0.224); // #40a02b
-        pub const TEAL: Color = Color::from_rgb(0.094, 0.616, 0.529); // #179299
-        pub const SKY: Color = Color::from_rgb(0.016, 0.647, 0.729); // #04a5e5
-        pub const SAPPHIRE: Color = Color::from_rgb(0.125, 0.584, 0.714); // #209fb5
-        pub const BLUE: Color = Color::from_rgb(0.118, 0.404, 0.961); // #1e66f5
-        pub const LAVENDER: Color = Color::from_rgb(0.443, 0.475, 0.863); // #7287fd
+        pub const ROSEWATER: Color = Color::from_rgb(0.9098, 0.8863, 0.8314);
+        pub const FLAMINGO: Color = Color::from_rgb(0.8196, 0.6039, 0.4000);
+        pub const PINK: Color = Color::from_rgb(0.8196, 0.6039, 0.4000);
+        pub const MAUVE: Color = Color::from_rgb(0.7490, 0.6549, 0.4157);
+        pub const RED: Color = Color::from_rgb(0.7765, 0.4706, 0.4706);
+        pub const MAROON: Color = Color::from_rgb(0.7765, 0.4706, 0.4706);
+        pub const PEACH: Color = Color::from_rgb(0.8196, 0.6039, 0.4000);
+        pub const YELLOW: Color = Color::from_rgb(0.7490, 0.6549, 0.4157);
+        pub const GREEN: Color = Color::from_rgb(0.5608, 0.6863, 0.5608);
+        pub const TEAL: Color = Color::from_rgb(0.6353, 0.7373, 0.6353);
+        pub const SKY: Color = Color::from_rgb(0.5608, 0.6863, 0.5608);
+        pub const SAPPHIRE: Color = Color::from_rgb(0.4863, 0.5961, 0.4863);
+        pub const BLUE: Color = Color::from_rgb(0.5608, 0.6863, 0.5608);
+        pub const LAVENDER: Color = Color::from_rgb(0.7216, 0.7098, 0.6745);
 
-        // Brand accent — light mode mirrors dark via GREEN
         pub const ACCENT: Color = GREEN;
 
-        // Text colors
-        pub const TEXT: Color = Color::from_rgb(0.298, 0.322, 0.404); // #4c4f69
-        pub const SUBTEXT1: Color = Color::from_rgb(0.361, 0.380, 0.459); // #5c5f77
-        pub const SUBTEXT0: Color = Color::from_rgb(0.424, 0.443, 0.522); // #6c6f85
+        pub const TEXT: Color = Color::from_rgb(0.9098, 0.8863, 0.8314);
+        pub const SUBTEXT1: Color = Color::from_rgb(0.7216, 0.7098, 0.6745);
+        pub const SUBTEXT0: Color = Color::from_rgb(0.5451, 0.5686, 0.5412);
 
-        // Overlay colors
-        pub const OVERLAY2: Color = Color::from_rgb(0.486, 0.502, 0.580); // #7c7f93
-        pub const OVERLAY1: Color = Color::from_rgb(0.549, 0.565, 0.643); // #8c8fa1
-        pub const OVERLAY0: Color = Color::from_rgb(0.612, 0.627, 0.706); // #9ca0b0
+        pub const OVERLAY2: Color = Color::from_rgb(0.5451, 0.5686, 0.5412);
+        pub const OVERLAY1: Color = Color::from_rgb(0.5451, 0.5686, 0.5412);
+        pub const OVERLAY0: Color = Color::from_rgb(0.5451, 0.5686, 0.5412);
 
-        // Surface colors
-        pub const SURFACE2: Color = Color::from_rgb(0.675, 0.690, 0.757); // #acb0be
-        pub const SURFACE1: Color = Color::from_rgb(0.737, 0.753, 0.816); // #bcc0cc
-        pub const SURFACE0: Color = Color::from_rgb(0.800, 0.816, 0.863); // #ccd0da
+        pub const SURFACE2: Color = Color::from_rgb(0.1647, 0.1843, 0.2000);
+        pub const SURFACE1: Color = Color::from_rgb(0.1216, 0.1373, 0.1490);
+        pub const SURFACE0: Color = Color::from_rgb(0.0902, 0.1020, 0.1137);
 
-        // Base colors
-        pub const BASE: Color = Color::from_rgb(0.937, 0.945, 0.961); // #eff1f5
-        pub const MANTLE: Color = Color::from_rgb(0.902, 0.910, 0.937); // #e6e9ef
-        pub const CRUST: Color = Color::from_rgb(0.863, 0.878, 0.910); // #dce0e8
+        pub const BASE: Color = Color::from_rgb(0.0431, 0.0510, 0.0549);
+        pub const MANTLE: Color = Color::from_rgb(0.0667, 0.0784, 0.0863);
+        pub const CRUST: Color = Color::from_rgb(0.0314, 0.0353, 0.0392);
 
-        // Overlay background for modals (semi-transparent light)
         pub const OVERLAY_BG: Color = Color {
-            r: 0.298,
-            g: 0.322,
-            b: 0.404,
-            a: 0.50,
+            r: 0.0314,
+            g: 0.0353,
+            b: 0.0392,
+            a: 0.85,
         };
 
-        // Selection highlight
         pub const SELECTION: Color = SURFACE1;
     }
 }
@@ -344,39 +343,39 @@ impl Default for MaldTheme {
 }
 
 impl MaldTheme {
+    /// Theme toggle — sovereign dark is the only mode. No-op preserved for the
+    /// existing message wiring; flipping `is_dark` in the field does nothing
+    /// because the palette is identical and `iced_theme()` always returns dark.
     pub fn toggle(&mut self) {
-        self.is_dark = !self.is_dark;
+        // Sovereign Terminal OS is dark-only. Toggling does nothing.
     }
 
     pub fn iced_theme(&self) -> Theme {
-        if self.is_dark {
-            Theme::custom("MALD Catppuccin", catppuccin_mocha_palette())
-        } else {
-            Theme::custom("MALD Light", catppuccin_latte_palette())
-        }
+        Theme::custom("MALD Sovereign", sovereign_palette())
     }
 }
 
-fn catppuccin_mocha_palette() -> Palette {
+fn sovereign_palette() -> Palette {
     Palette {
         background: colors::BASE,
         text: colors::TEXT,
         primary: colors::ACCENT,
         success: colors::GREEN,
         danger: colors::RED,
-        warning: colors::YELLOW,
+        warning: colors::PEACH,
     }
 }
 
+// Retained for source compatibility — both old constructors now resolve to the
+// sovereign palette so any lingering reference still compiles.
+#[allow(dead_code)]
+fn catppuccin_mocha_palette() -> Palette {
+    sovereign_palette()
+}
+
+#[allow(dead_code)]
 fn catppuccin_latte_palette() -> Palette {
-    Palette {
-        background: colors::latte::BASE,
-        text: colors::latte::TEXT,
-        primary: colors::latte::ACCENT,
-        success: colors::latte::GREEN,
-        danger: colors::latte::RED,
-        warning: colors::latte::YELLOW,
-    }
+    sovereign_palette()
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
