@@ -3945,7 +3945,7 @@ impl MaldApp {
             ("Ctrl+Tab", "Next tab"),
             ("Ctrl+S", "Save"),
             ("Ctrl+E", "External editor"),
-            ("?", "This help"),
+            ("F1 / Ctrl+/", "This help"),
             ("Esc", "Close overlays"),
         ];
 
@@ -4484,8 +4484,10 @@ fn handle_key_press(key: keyboard::Key, modifiers: keyboard::Modifiers) -> Optio
         (true, false, Key::Character(c)) if c.as_str() == "e" => Some(Message::EditorExternalOpen),
         // Ctrl+Tab → next tab
         (true, false, Key::Named(Named::Tab)) => Some(Message::Noop),
-        // ? → keybindings help
-        (false, true, Key::Character(c)) if c.as_str() == "/" => Some(Message::KeybindingsToggle),
+        // F1 → keybindings help (universal editor convention)
+        (false, false, Key::Named(Named::F1)) => Some(Message::KeybindingsToggle),
+        // Ctrl+/ → keybindings help (chord — no conflict with typing `?`)
+        (true, false, Key::Character(c)) if c.as_str() == "/" => Some(Message::KeybindingsToggle),
         // Arrow Up → palette navigate up
         (false, false, Key::Named(Named::ArrowUp)) => Some(Message::CommandPaletteUp),
         // Arrow Down → palette navigate down
