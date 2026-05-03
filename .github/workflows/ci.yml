@@ -27,9 +27,6 @@ permissions:
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-  # sccache: object-file cache shared across jobs / matrix permutations.
-  SCCACHE_GHA_ENABLED: "true"
-  RUSTC_WRAPPER: "sccache"
 
 jobs:
   # ────────────────────────────────────────────────────────────────
@@ -43,7 +40,6 @@ jobs:
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           components: rustfmt, clippy
-      - uses: mozilla-actions/sccache-action@v0.0.6
       - uses: Swatinem/rust-cache@v2
         with:
           cache-all-crates: true
@@ -76,7 +72,6 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: actions-rust-lang/setup-rust-toolchain@v1
-      - uses: mozilla-actions/sccache-action@v0.0.6
       - name: Install Linux GUI dependencies
         if: runner.os == 'Linux'
         run: |
@@ -140,7 +135,6 @@ jobs:
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           target: ${{ matrix.target }}
-      - uses: mozilla-actions/sccache-action@v0.0.6
       - name: Ensure Rust target is installed
         shell: bash
         run: rustup target add ${{ matrix.target }}
