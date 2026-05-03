@@ -62,11 +62,48 @@ function SectionLabel({ children }) {
       fontSize: 12,
       lineHeight: '20px',
       letterSpacing: '0.05em',
-      marginBottom: 24,
+      marginBottom: 32,
     }}>
-      {children}
+      <span className="label-line">{children}</span>
     </div>
   );
+}
+
+// ---------- MALD logo (inline SVG) ----------
+function MaldLogo({ size = 18, color }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 64 64"
+      role="img"
+      aria-label="MALD"
+      className="logo-spin"
+      style={{ flexShrink: 0 }}
+    >
+      <rect x="18" y="12" width="28" height="40" rx="4" fill="none" stroke={color} strokeWidth="4" />
+      <line x1="25" y1="12" x2="25" y2="52" stroke={color} strokeWidth="3" opacity="0.7" />
+      <line x1="30" y1="24" x2="40" y2="24" stroke={color} strokeWidth="3" strokeLinecap="round" />
+      <line x1="30" y1="32" x2="40" y2="32" stroke={color} strokeWidth="3" strokeLinecap="round" />
+      <line x1="30" y1="40" x2="38" y2="40" stroke={color} strokeWidth="3" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+// ---------- Scroll progress bar (top of page) ----------
+function ScrollProgress() {
+  const [pct, setPct] = React.useState(0);
+  React.useEffect(() => {
+    const onScroll = () => {
+      const h = document.documentElement;
+      const max = h.scrollHeight - h.clientHeight;
+      setPct(max > 0 ? (h.scrollTop / max) * 100 : 0);
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    onScroll();
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+  return <div className="scroll-progress" style={{ width: `${pct}%` }} aria-hidden="true" />;
 }
 
 // ---------- Header ----------
@@ -80,49 +117,61 @@ function Header({ accent }) {
   }, []);
 
   return (
-    <header
-      className={scrolled ? 'header-blur' : ''}
-      style={{
-        position: 'sticky',
-        top: 0,
-        zIndex: 50,
-        transition: 'background 200ms ease-out',
-      }}
-    >
-      <div style={{
-        maxWidth: 1200,
-        margin: '0 auto',
-        padding: '20px 32px',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-      }}>
-        <a href="#top" style={{
-          color: accent,
-          fontSize: 14,
-          fontWeight: 600,
-          letterSpacing: '0.05em',
-        }}>MALD</a>
-        <nav style={{ display: 'flex', alignItems: 'center', gap: 16, fontSize: 12 }}>
-          <a href="#docs" style={{ color: 'var(--text-muted)' }} className="nav-link">docs</a>
-          <span style={{ color: 'var(--text-dim)' }}>·</span>
-          <a href="#github" style={{ color: 'var(--text-muted)' }} className="nav-link">github</a>
-          <span style={{ color: 'var(--text-dim)' }}>·</span>
+    <React.Fragment>
+      <ScrollProgress />
+      <header
+        className={scrolled ? 'header-blur' : ''}
+        style={{
+          position: 'sticky',
+          top: 0,
+          zIndex: 50,
+          transition: 'background 200ms ease-out',
+        }}
+      >
+        <div style={{
+          maxWidth: 1200,
+          margin: '0 auto',
+          padding: '20px 32px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+        }}>
           <a
-            href="#install"
+            href="#top"
             style={{
               color: accent,
-              border: `1px solid ${accent}`,
-              padding: '6px 14px',
-              borderRadius: 4,
-              transition: 'background 150ms ease-out',
+              fontSize: 14,
+              fontWeight: 600,
+              letterSpacing: '0.05em',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 10,
             }}
-            onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(143,175,143,0.08)'}
-            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-          >install</a>
-        </nav>
-      </div>
-    </header>
+          >
+            <MaldLogo size={20} color={accent} />
+            MALD
+          </a>
+          <nav style={{ display: 'flex', alignItems: 'center', gap: 16, fontSize: 12 }}>
+            <a href="#docs" style={{ color: 'var(--text-muted)' }} className="nav-link">docs</a>
+            <span style={{ color: 'var(--text-dim)' }}>·</span>
+            <a href="#github" style={{ color: 'var(--text-muted)' }} className="nav-link">github</a>
+            <span style={{ color: 'var(--text-dim)' }}>·</span>
+            <a
+              href="#install"
+              className="btn-lift"
+              style={{
+                color: accent,
+                border: `1px solid ${accent}`,
+                padding: '6px 14px',
+                borderRadius: 4,
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(143,175,143,0.08)'}
+              onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+            >install</a>
+          </nav>
+        </div>
+      </header>
+    </React.Fragment>
   );
 }
 
@@ -170,7 +219,7 @@ function Hero({ accent, shaderIntensity, headline, subline }) {
         paddingBottom: 96,
       }}>
         {/* Pills row */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 32, flexWrap: 'wrap' }}>
+        <div className="stagger" style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 32, flexWrap: 'wrap' }}>
           <span style={pillStyle}>local-first</span>
           <span style={{ color: 'var(--text-dim)', fontSize: 11 }}>·</span>
           <span style={pillStyle}>privacy-by-default</span>
@@ -179,7 +228,7 @@ function Hero({ accent, shaderIntensity, headline, subline }) {
         </div>
 
         {/* H1 */}
-        <h1 style={{
+        <h1 className="hero-rise delay-1" style={{
           margin: 0,
           fontSize: 'clamp(36px, 5.6vw, 56px)',
           lineHeight: 1.14,
@@ -193,7 +242,7 @@ function Hero({ accent, shaderIntensity, headline, subline }) {
         </h1>
 
         {/* Sub-line */}
-        <p style={{
+        <p className="hero-rise delay-2" style={{
           margin: 0,
           fontSize: 14,
           lineHeight: '24px',
@@ -205,9 +254,10 @@ function Hero({ accent, shaderIntensity, headline, subline }) {
         </p>
 
         {/* CTA row */}
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12 }}>
+        <div className="hero-rise delay-3" style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12 }}>
           <a
             href="#install"
+            className="btn-lift"
             style={{
               display: 'inline-flex',
               alignItems: 'center',
@@ -218,13 +268,13 @@ function Hero({ accent, shaderIntensity, headline, subline }) {
               padding: '8px 16px',
               borderRadius: 4,
               fontSize: 12,
-              transition: 'background 150ms ease-out',
             }}
             onMouseEnter={(e) => e.currentTarget.style.background = 'var(--bg-surface)'}
             onMouseLeave={(e) => e.currentTarget.style.background = 'var(--bg-panel-alt)'}
           >Install</a>
           <a
             href="#github"
+            className="btn-lift"
             style={{
               display: 'inline-flex',
               alignItems: 'center',
@@ -234,7 +284,6 @@ function Hero({ accent, shaderIntensity, headline, subline }) {
               padding: '8px 16px',
               borderRadius: 4,
               fontSize: 12,
-              transition: 'color 150ms ease-out, border-color 150ms ease-out',
             }}
             onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--text)'; e.currentTarget.style.borderColor = 'var(--text-muted)'; }}
             onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.borderColor = 'var(--border-strong)'; }}
@@ -247,6 +296,7 @@ function Hero({ accent, shaderIntensity, headline, subline }) {
         {/* Inline copy pill */}
         <div
           onClick={onCopy}
+          className="hero-rise delay-4 btn-lift"
           style={{
             display: 'inline-flex',
             alignItems: 'center',
@@ -260,7 +310,6 @@ function Hero({ accent, shaderIntensity, headline, subline }) {
             width: 'fit-content',
             cursor: 'pointer',
             userSelect: 'none',
-            transition: 'border-color 150ms ease-out',
           }}
           onMouseEnter={(e) => e.currentTarget.style.borderColor = 'var(--border-strong)'}
           onMouseLeave={(e) => e.currentTarget.style.borderColor = 'var(--border)'}
@@ -274,7 +323,7 @@ function Hero({ accent, shaderIntensity, headline, subline }) {
       </div>
 
       {/* Scroll indicator */}
-      <div style={{
+      <div className="scroll-bob" style={{
         position: 'relative',
         zIndex: 10,
         textAlign: 'center',
@@ -296,7 +345,7 @@ function Hero({ accent, shaderIntensity, headline, subline }) {
 // ---------- Glyph holder ----------
 function GlyphHolder({ children, accent }) {
   return (
-    <div style={{
+    <div className="glyph" style={{
       width: 24,
       height: 24,
       border: `1px solid ${accent}`,
@@ -326,7 +375,7 @@ function WhatItIs({ accent }) {
       <SectionLabel>// what it is</SectionLabel>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
         {cards.map((c, i) => (
-          <div key={i} style={{
+          <div key={i} className="card-lift" style={{
             background: 'var(--bg-panel)',
             border: '1px solid var(--border)',
             borderRadius: 8,
@@ -371,6 +420,7 @@ function ThreeSurfaces({ accent }) {
             <button
               key={t}
               onClick={() => setTab(t)}
+              className={'tab-pill' + (active ? ' tab-active' : '')}
               style={{
                 padding: '6px 16px',
                 borderRadius: 999,
@@ -379,7 +429,6 @@ function ThreeSurfaces({ accent }) {
                 color: active ? accent : 'var(--text-muted)',
                 fontSize: 12,
                 fontFamily: 'inherit',
-                transition: 'all 150ms ease-out',
               }}
             >
               {t}
@@ -480,13 +529,16 @@ function GuiBody({ accent }) {
               fontSize: 12,
               color: f.active ? 'var(--text)' : 'var(--text-muted)',
             }}>
-              <span style={{
-                width: 6, height: 6,
-                borderRadius: '50%',
-                background: f.active ? accent : 'transparent',
-                border: f.active ? 'none' : '1px solid var(--text-dim)',
-                flexShrink: 0,
-              }} />
+              <span
+                className={f.active ? 'pulse-dot' : ''}
+                style={{
+                  width: 6, height: 6,
+                  borderRadius: '50%',
+                  background: f.active ? accent : 'transparent',
+                  border: f.active ? 'none' : '1px solid var(--text-dim)',
+                  flexShrink: 0,
+                }}
+              />
               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</span>
             </div>
           ))}
@@ -779,7 +831,7 @@ function Features({ accent }) {
       <SectionLabel>// features</SectionLabel>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
         {items.map((c, i) => (
-          <div key={i} style={{
+          <div key={i} className="card-lift" style={{
             background: 'var(--bg-panel)',
             border: '1px solid var(--border)',
             borderRadius: 8,
@@ -850,17 +902,19 @@ function ArchDiagram({ accent }) {
     <div style={{ width: '100%', overflowX: 'auto' }}>
       <svg viewBox={`0 0 760 280`} style={{ width: '100%', height: 'auto', maxWidth: 760, margin: '0 auto', display: 'block' }} preserveAspectRatio="xMidYMid meet">
         {/* Vertical line from Markdown to Daemon */}
-        <line x1={topBox.x + boxW / 2} y1={topBox.y + boxH} x2={boxes[1].x + boxW / 2} y2={boxes[1].y} stroke={stroke} strokeWidth="1" />
+        <line className="arch-line" x1={topBox.x + boxW / 2} y1={topBox.y + boxH} x2={boxes[1].x + boxW / 2} y2={boxes[1].y} stroke={accent} strokeWidth="1" />
         {/* Horizontal connectors */}
         {boxes.slice(0, -1).map((b, i) => (
           <line
             key={i}
+            className="arch-line"
             x1={b.x + boxW}
             y1={b.y + boxH / 2}
             x2={boxes[i + 1].x}
             y2={boxes[i + 1].y + boxH / 2}
-            stroke={stroke}
+            stroke={accent}
             strokeWidth="1"
+            style={{ animationDelay: `${i * 400}ms` }}
           />
         ))}
         {/* Top box */}
@@ -921,6 +975,7 @@ function Install({ accent }) {
             <button
               key={t}
               onClick={() => setTab(t)}
+              className={'tab-pill' + (active ? ' tab-active' : '')}
               style={{
                 padding: '6px 16px',
                 borderRadius: 999,
@@ -929,7 +984,6 @@ function Install({ accent }) {
                 color: active ? accent : 'var(--text-muted)',
                 fontSize: 12,
                 fontFamily: 'inherit',
-                transition: 'all 150ms ease-out',
               }}
             >
               {t}
@@ -938,7 +992,7 @@ function Install({ accent }) {
         })}
       </div>
 
-      <div style={{
+      <div className="code-shimmer" style={{
         background: 'var(--bg-panel-alt)',
         border: '1px solid var(--border)',
         borderRadius: 8,

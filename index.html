@@ -61,8 +61,138 @@
     border-bottom: 1px solid var(--border);
   }
 
+  /* ── Animations ───────────────────────────────────────────── */
+
+  /* Top-of-page scroll progress */
+  .scroll-progress {
+    position: fixed;
+    top: 0; left: 0;
+    height: 1px;
+    background: var(--accent);
+    z-index: 100;
+    width: 0;
+    transition: width 80ms linear;
+    box-shadow: 0 0 8px rgba(143, 175, 143, 0.4);
+  }
+
+  /* Card lift on hover */
+  .card-lift {
+    transition: transform 180ms ease-out, border-color 180ms ease-out, box-shadow 180ms ease-out, background 180ms ease-out;
+    will-change: transform;
+  }
+  .card-lift:hover {
+    transform: translateY(-2px);
+    border-color: rgba(143, 175, 143, 0.35) !important;
+    box-shadow: 0 6px 24px -8px rgba(143, 175, 143, 0.22);
+  }
+  .glyph { transition: box-shadow 200ms ease-out, transform 200ms ease-out; }
+  .card-lift:hover .glyph {
+    box-shadow: 0 0 0 2px rgba(143, 175, 143, 0.18);
+    transform: scale(1.05);
+  }
+
+  /* Button micro-lift */
+  .btn-lift { transition: transform 150ms ease-out, background 150ms ease-out, border-color 150ms ease-out, color 150ms ease-out, box-shadow 150ms ease-out; }
+  .btn-lift:hover { transform: translateY(-1px); }
+  .btn-lift:active { transform: translateY(0); }
+
+  /* Pulsing sage dot — active rows, daemon */
+  .pulse-dot { animation: pulse-glow 2.4s ease-in-out infinite; }
+  @keyframes pulse-glow {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(143, 175, 143, 0.55); }
+    50% { box-shadow: 0 0 0 5px rgba(143, 175, 143, 0); }
+  }
+
+  /* Section label — sage underline draws in on reveal */
+  .label-line { position: relative; display: inline-block; }
+  .label-line::after {
+    content: '';
+    position: absolute;
+    bottom: -6px; left: 0;
+    height: 1px;
+    width: 0;
+    background: linear-gradient(90deg, var(--accent) 0%, rgba(143, 175, 143, 0) 100%);
+    transition: width 600ms cubic-bezier(0.22, 1, 0.36, 1) 100ms;
+  }
+  .reveal.in .label-line::after { width: 96px; }
+
+  /* Stagger fade-in (hero pills, etc.) */
+  .stagger > * {
+    opacity: 0;
+    transform: translateY(4px);
+    animation: stagger-in 420ms ease-out forwards;
+  }
+  .stagger > *:nth-child(1) { animation-delay: 80ms; }
+  .stagger > *:nth-child(2) { animation-delay: 140ms; }
+  .stagger > *:nth-child(3) { animation-delay: 200ms; }
+  .stagger > *:nth-child(4) { animation-delay: 260ms; }
+  .stagger > *:nth-child(5) { animation-delay: 320ms; }
+  .stagger > *:nth-child(6) { animation-delay: 380ms; }
+  @keyframes stagger-in { to { opacity: 1; transform: translateY(0); } }
+
+  /* Hero h1 + sub gentle slide-up on mount */
+  .hero-rise {
+    opacity: 0;
+    transform: translateY(8px);
+    animation: stagger-in 600ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  }
+  .hero-rise.delay-1 { animation-delay: 200ms; }
+  .hero-rise.delay-2 { animation-delay: 320ms; }
+  .hero-rise.delay-3 { animation-delay: 440ms; }
+  .hero-rise.delay-4 { animation-delay: 560ms; }
+
+  /* Architecture diagram lines — breathing pulse */
+  .arch-line { animation: arch-pulse 4s ease-in-out infinite; }
+  @keyframes arch-pulse {
+    0%, 100% { opacity: 0.55; }
+    50% { opacity: 1; }
+  }
+
+  /* Code block — subtle scanline shimmer every 6s */
+  .code-shimmer { position: relative; overflow: hidden; }
+  .code-shimmer::before {
+    content: '';
+    position: absolute;
+    top: 0; left: -100%;
+    width: 100%; height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(143, 175, 143, 0.06), transparent);
+    animation: shimmer 6s ease-in-out infinite;
+    pointer-events: none;
+  }
+  @keyframes shimmer {
+    0% { left: -100%; }
+    50% { left: 100%; }
+    100% { left: 100%; }
+  }
+
+  /* Tab pill smooth states */
+  .tab-pill { transition: background 200ms ease-out, color 200ms ease-out, border-color 200ms ease-out, transform 150ms ease-out; }
+  .tab-pill:hover:not(.tab-active) { color: var(--text); border-color: var(--text-dim); }
+  .tab-pill:active { transform: scale(0.97); }
+
+  /* Scroll-down arrow gentle bob */
+  .scroll-bob { animation: bob 2.4s ease-in-out infinite; }
+  @keyframes bob {
+    0%, 100% { transform: translateY(0); opacity: 0.6; }
+    50% { transform: translateY(4px); opacity: 1; }
+  }
+
+  /* Logo slow rotation hover */
+  .logo-spin { transition: transform 400ms cubic-bezier(0.22, 1, 0.36, 1); }
+  .logo-spin:hover { transform: rotate(-6deg) scale(1.04); }
+
+  /* Reduced-motion fallback */
   @media (prefers-reduced-motion: reduce) {
-    .reveal { transition: none; opacity: 1; transform: none; }
+    .reveal, .card-lift, .btn-lift, .pulse-dot, .arch-line,
+    .stagger > *, .hero-rise, .code-shimmer::before, .tab-pill, .scroll-bob, .logo-spin {
+      transition: none !important;
+      animation: none !important;
+      transform: none !important;
+    }
+    .reveal.in { opacity: 1; }
+    .stagger > * { opacity: 1; transform: none; }
+    .hero-rise { opacity: 1; transform: none; animation: none; }
+    .reveal.in .label-line::after { width: 96px; }
   }
 </style>
 </head>
